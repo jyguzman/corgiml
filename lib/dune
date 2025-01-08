@@ -1,0 +1,3 @@
+(library
+ (name corgiml)
+ (public_name corgiml.lib))
