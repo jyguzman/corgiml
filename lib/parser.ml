@@ -26,7 +26,7 @@ module type TOKEN_STREAM = sig
 end
 
 module TokenStream : TOKEN_STREAM = struct 
-  let (tokens: token list ref) = ref []
+  let tokens = ref []
 
   let init (toks: token list) = tokens := toks 
 
@@ -137,7 +137,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       match ident.token_type with 
         Literal Ident i -> 
           let _ = Stream.advance () in  
-          parse_params_aux (i :: params) 
+            parse_params_aux (i :: params) 
       | _ -> 
           Ok (List.rev params)
   in 
@@ -191,23 +191,24 @@ module Parser (Stream : TOKEN_STREAM) = struct
       Ok ({Ast.pattern = pattern.lexeme; Ast.cmp_to = expr})
 
   let parse_match_clauses () = 
-    let rec parse_match_clauses_aux clauses = 
+    let rec parse_match_clauses_aux clauses =
       if Stream.accept ("|") then 
         let* clause = parse_match_clause () in
           parse_match_clauses_aux (clause :: clauses)
       else 
           Ok (List.rev clauses)
     in 
-      parse_match_clauses_aux []
+      let* clause = parse_match_clause () in 
+        parse_match_clauses_aux [clause] 
 
   let parse_pattern_match () = 
     let* match_expr = parse_expr 0 in 
     let* _ = Stream.expect ("with") in
     let* clauses = parse_match_clauses () in 
       Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
-    
 
-  let parse_type_declaration () = Ast.None
+  let parse_type_definition () = 
+    Ast.None
 
   let add_int_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Add (left, right))))
   let sub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Subtract (left, right))))

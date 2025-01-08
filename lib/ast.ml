@@ -5,8 +5,23 @@ type typ =
   | TBool 
   | TFunction of typ list
 
+type constant = 
+  | Integer of int 
+  | Float of float 
+  | String of string 
+  | Bool of bool
+  | EmptyBrackets 
+  | EmptyParens
+
+
+type pattern = 
+  | Constant of constant
+  | Ident of string
+
+
 type expr = 
   | None
+  | Pattern of pattern
   | Integer of int 
   | Float of float 
   | String of string 

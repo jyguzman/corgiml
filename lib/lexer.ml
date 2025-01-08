@@ -161,7 +161,7 @@ let tokenize_source source =
       tokenize_source @@ match c with 
         | '0' .. '9' -> tokenize_number lexer 
 
-        | 'a' .. 'z' | 'A' .. 'Z' -> tokenize_ident lexer 
+        | 'a' .. 'z' | 'A' .. 'Z' -> tokenize_ident lexer
 
         | '"' | '\'' -> tokenize_string {lexer with current = skip} c
 
