@@ -52,7 +52,7 @@ module TokenStream : TOKEN_STREAM = struct
     [] -> false
   | x :: _ -> 
     if x.lexeme = lexeme_or_name || x.name = lexeme_or_name 
-      then let () = advance () in true else false
+      then let _ = advance () in true else false
 
   let eof () = match !tokens with 
       [] -> false 
@@ -116,19 +116,19 @@ module Parser (Stream : TOKEN_STREAM) = struct
         if rbp >= lbp then 
           Ok left
         else
-          let () = Stream.advance () in
+          let _ = Stream.advance () in
           let* led = get_led next in 
-          let* left = led (left) in 
+          let* left = led left in 
             parse_expr_aux left
     in 
       let* next = Stream.take () in 
-      let () = Stream.advance () in
+      let _ = Stream.advance () in
       let* left = nud next in 
         parse_expr_aux left
 
   let parse_group () = 
     let* inner = parse_expr 0 in
-    let* () = Stream.expect(")") in
+    let* _ = Stream.expect(")") in
       Ok (Ast.Grouping inner)  
     
   let parse_params () = 
@@ -136,7 +136,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* ident = Stream.take () in
       match ident.token_type with 
         Literal Ident i -> 
-          let () = Stream.advance () in  
+          let _ = Stream.advance () in  
           parse_params_aux (i :: params) 
       | _ -> 
           Ok (List.rev params)
@@ -149,7 +149,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   let parse_function () =
     let* params = parse_params () in 
-    let* () = Stream.expect ("->") in
+    let* _ = Stream.expect ("->") in
     let* body = parse_expr 0 in
       Ok (make_fn_node params body)
 
@@ -162,20 +162,20 @@ module Parser (Stream : TOKEN_STREAM) = struct
       Error (Invalid_rec_let_binding ("'rec' expects at least two identifiers: function name then parameters at line " ^ string_of_int curr_token.line))
     else 
       let name = List.hd idents in
-      let* () = Stream.expect ("=") in 
+      let* _ = Stream.expect ("=") in 
       let* expr_after_equal = if num_idents = 1 then 
         parse_expr 0 
       else 
         let* body = parse_expr 0 in 
           Ok (make_fn_node (List.tl idents) body)
       in
-      let* () = Stream.expect ("in") in 
+      let* _ = Stream.expect ("in") in 
       let* expr_after_in = parse_expr 0 in 
         Ok (Ast.LetBinding (is_rec, name, expr_after_equal, expr_after_in))
 
   let parse_if_expr () = 
     let* then_cond = parse_expr 0 in 
-    let* () = Stream.expect ("then") in 
+    let* _ = Stream.expect ("then") in 
     let* then_expr = parse_expr 0 in 
     let* else_expr = if Stream.accept ("else") then parse_expr 0 else Ok None in 
       Ok (Ast.IfExpr {
@@ -183,8 +183,30 @@ module Parser (Stream : TOKEN_STREAM) = struct
         then_expr = then_expr; 
         else_expr = else_expr})
 
-  let parse_pattern_match () = Ast.None
-  let parse_type_annotation () = Ast.None
+  let parse_match_clause () = 
+    let* pattern = Stream.take () in 
+    let _ = Stream.advance () in 
+    let* _ = Stream.expect ("->") in 
+    let* expr = parse_expr 0 in 
+      Ok ({Ast.pattern = pattern.lexeme; Ast.cmp_to = expr})
+
+  let parse_match_clauses () = 
+    let rec parse_match_clauses_aux clauses = 
+      if Stream.accept ("|") then 
+        let* clause = parse_match_clause () in
+          parse_match_clauses_aux (clause :: clauses)
+      else 
+          Ok (List.rev clauses)
+    in 
+      parse_match_clauses_aux []
+
+  let parse_pattern_match () = 
+    let* match_expr = parse_expr 0 in 
+    let* _ = Stream.expect ("with") in
+    let* clauses = parse_match_clauses () in 
+      Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
+    
+
   let parse_type_declaration () = Ast.None
 
   let add_int_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Add (left, right))))
@@ -200,7 +222,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = add_to_prec_table LParen 70 (Nud parse_group)
   let _ = add_to_prec_table (Keywords If) 0 (Nud parse_if_expr)
   let _ = add_to_prec_table (Keywords Let) 0 (Nud parse_let_binding)
-  let _ = add_to_prec_table (Keywords Match) 0 (Nud parse_if_expr)
+  let _ = add_to_prec_table (Keywords Match) 0 (Nud parse_pattern_match)
   let _ = add_to_prec_table (Keywords Fun) 0 (Nud parse_function)
 
 end

@@ -123,6 +123,7 @@ let tokenize_op lexer c =
   let name, op, lexeme = match c with
 
     | '(' -> ("lparen", LParen, "(") | ')' -> ("rparen", RParen, ")")
+    | '[' -> if next = ']' then ("brackets", Special Brackets, "[]") else ("lbracket", LBracket, "]")
     | '*' -> if next = '.' then ("star", FloatArithOp StarDot, "*.") else ("star", IntArithOp Star, "*")
     | '+' -> if next = '.' then ("plus", FloatArithOp PlusDot, "+.") else ("plus", IntArithOp Plus, "+")
     | '/' -> if next = '.' then ("slash", FloatArithOp SlashDot, "/.") else ("slash", IntArithOp Minus, "/")
@@ -141,6 +142,7 @@ let tokenize_op lexer c =
     | '=' -> if next = '=' then ("double_equal", ComparisonOp DoubleEqual, "==") else ("equal", ComparisonOp SingleEqual, "=")
     | '!' -> if next = '=' then ("not_equal", ComparisonOp BangEqual, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
 
+    | '|' -> ("clause_sep", Special PttrnSeperator, "|") | '_' -> ("wildcard", Special Wildcard, "_")
     
     | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col
   in 
@@ -163,8 +165,8 @@ let tokenize_source source =
 
         | '"' | '\'' -> tokenize_string {lexer with current = skip} c
 
-        | '^' | '<' | '>' | '=' | '~' | '+' | '-' | '/' | '*' |'.' 
-        | ';' | ':' | ',' | '[' | ']' | '{' | '}' | '(' | ')' -> tokenize_op lexer c
+        | '^' | '<' | '>' | '=' | '~' | '+' | '-' | '/' | '*' |'.' | '_'
+        | ';' | ':' | ',' | '[' | ']' | '{' | '}' | '(' | ')' | '|' -> tokenize_op lexer c
 
         | '\n' -> {lexer with line = lexer.line + 1; col = 0; current = skip}
 

@@ -1,1 +1,1 @@
-let rec do_thing x y = x + y in (x + y)
+match x with | y -> x + y | z -> y

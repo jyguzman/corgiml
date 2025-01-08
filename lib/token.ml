@@ -60,6 +60,8 @@ type token_type =
   | EOF
   | LParen 
   | RParen
+  | LBracket 
+  | RBracket
   
 let get_token_type token_type = 
   match token_type with 

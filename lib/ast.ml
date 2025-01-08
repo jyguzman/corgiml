@@ -1,3 +1,10 @@
+type typ = 
+  | TInt 
+  | TFloat 
+  | TString 
+  | TBool 
+  | TFunction of typ list
+
 type expr = 
   | None
   | Integer of int 
@@ -18,6 +25,17 @@ type expr =
     param: string; 
     expr: expr;
   }
+  | MatchClause of match_clause
+  | PatternMatch of {
+    match_expr: expr;
+    clauses: match_clause list;
+  }
+
+  and match_clause = {
+    pattern: string;
+    cmp_to: expr;
+  }
+    
 
 and bin_op = 
   | Add of expr * expr 
@@ -28,9 +46,6 @@ and bin_op =
 and un_op = 
   | Minus of expr
 
-
-let stringify_params params = 
-  List.fold_left (fun acc x -> acc ^ x ^ " ") "" params
 
 let rec stringify_expr expr = match expr with 
     Integer i -> string_of_int i 
@@ -44,4 +59,12 @@ let rec stringify_expr expr = match expr with
   | LetBinding (is_rec, pat, l, r) -> Printf.sprintf "Let(%s%s = %s in %s)" (if is_rec then "rec " else "") pat (stringify_expr l) (stringify_expr r) 
   | IfExpr i -> Printf.sprintf "If(%s then %s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr)
   | Function f -> Printf.sprintf "Fun(%s -> %s)" f.param (stringify_expr f.expr)
+  | PatternMatch pm -> Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr pm.match_expr) (stringify_match_clauses pm.clauses)
   | _ -> ""
+
+and stringify_params params = List.fold_left (fun acc x -> acc ^ x ^ " ") "" params
+and stringify_match_clauses clauses = 
+  let stringify_clause clause = 
+    Printf.sprintf "| %s -> %s" clause.pattern (stringify_expr clause.cmp_to) 
+  in 
+    List.fold_left (fun acc clause -> acc ^ (stringify_clause clause)) "" clauses
