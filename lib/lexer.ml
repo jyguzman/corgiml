@@ -18,7 +18,9 @@ let keywords = Keywords.of_seq @@ List.to_seq [
 
   ("true", Keywords True); ("false", Keywords False);
 
-  ("begin", Keywords Begin); ("end", Keywords End)
+  ("begin", Keywords Begin); ("end", Keywords End);
+
+  ("of", Keywords Of)
 
 ];;
 
@@ -124,9 +126,10 @@ let tokenize_op lexer c =
 
     | '(' -> ("lparen", LParen, "(") | ')' -> ("rparen", RParen, ")")
     | '[' -> if next = ']' then ("brackets", Special Brackets, "[]") else ("lbracket", LBracket, "]")
+    | ':' -> if next = ':' then ("cons", Special Cons, "::") else ("colon", Colon, ":")
     | '*' -> if next = '.' then ("star", FloatArithOp StarDot, "*.") else ("star", IntArithOp Star, "*")
     | '+' -> if next = '.' then ("plus", FloatArithOp PlusDot, "+.") else ("plus", IntArithOp Plus, "+")
-    | '/' -> if next = '.' then ("slash", FloatArithOp SlashDot, "/.") else ("slash", IntArithOp Minus, "/")
+    | '/' -> if next = '.' then ("slash", FloatArithOp SlashDot, "/.") else ("slash", IntArithOp Slash, "/")
 
     | '<' -> (match next with 
       '>' -> ("left_right_arrow", ComparisonOp LeftRightArrow, "<>")

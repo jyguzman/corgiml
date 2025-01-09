@@ -29,13 +29,7 @@ type keywords =
   | True | False
   | Fun
   | Begin | End
-
-type annotation = 
-  | TInt 
-  | TFloat 
-  | TBool
-  | TString
-  | TNone
+  | Of
 
 type literal = 
   | Integer of int
@@ -47,6 +41,7 @@ type special =
   | Arrow | Brackets 
   | Wildcard 
   | PttrnSeperator
+  | Cons
 
 type token_type = 
   | Primary
@@ -62,7 +57,8 @@ type token_type =
   | RParen
   | LBracket 
   | RBracket
-  
+  | Colon 
+
 let get_token_type token_type = 
   match token_type with 
     Literal _ -> Primary

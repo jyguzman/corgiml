@@ -19,7 +19,7 @@ module type TOKEN_STREAM = sig
   val init: token list -> unit
   val peek: unit -> token option 
   val advance: unit -> unit 
-  val expect: string -> (unit, parse_error) result
+  val expect: string -> (token, parse_error) result
   val accept: string -> bool
   val take: unit -> (token, parse_error) result
   val eof: unit -> bool
@@ -45,7 +45,7 @@ module TokenStream : TOKEN_STREAM = struct
   let expect lexeme = match !tokens with 
     [] -> Error (Unexpected_token "unexpected end of file")
   | x :: _ -> 
-    if x.lexeme = lexeme then let _ = advance () in Ok ()
+    if x.lexeme = lexeme then let _ = advance () in Ok (x)
     else Error (Unexpected_token ("expected " ^ lexeme ^ " but got " ^ stringify_token x))
 
   let accept lexeme_or_name = match !tokens with 
@@ -63,35 +63,32 @@ type handler =
   | Nud of (unit -> (Ast.expr, parse_error) result) 
   | Led of (Ast.expr -> (Ast.expr, parse_error) result)
 
-let (prec_table: (token_type, int * handler) Hashtbl.t) = Hashtbl.create 64
 
-let get_lbp token = 
-  let prec_info = Hashtbl.find_opt prec_table token.token_type in 
-  match prec_info with 
-    Some (lbp, _) -> Ok lbp
-  | None -> Error (Unexpected_token ("Unexpected token getting lbp " ^ stringify_token token))
+module Parser (Stream : TOKEN_STREAM) = struct  
+  let prec_table = Hashtbl.create 64
 
-let get_literal token =
-  match token.token_type with 
-    Literal l -> (match l with 
+  let lbp token = 
+    let prec_info = Hashtbl.find_opt prec_table token.token_type in 
+    match prec_info with 
+      Some (lbp, _) -> Ok lbp
+    | None -> Error (Unexpected_token ("Unexpected token getting lbp " ^ stringify_token token))
+
+  let led left token = 
+    let prec = Hashtbl.find_opt prec_table token.token_type in 
+    match prec with 
+      None -> Error (Unexpected_token ("unexpected token getting led: " ^ stringify_token token))
+    | Some (_, handler) ->
+      (match handler with 
+        Led led -> let* expr = led left in Ok expr
+        | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
+
+  let nud token = 
+    match token.token_type with 
+      Literal l -> (match l with 
         Integer i -> Ok (Ast.Integer i)
       | Decimal d -> Ok (Ast.Float d)
       | String s -> Ok (Ast.String s)
       | Ident i -> Ok (Ast.Ident i))
-    | _ -> Error (Unexpected_token ("Expected literal, got " ^ stringify_token token))
-
-let get_led token = 
-  let prec = Hashtbl.find_opt prec_table token.token_type in 
-  match prec with 
-    None -> Error (Unexpected_token ("unexpected token getting led: " ^ stringify_token token))
-  | Some (_, handler) ->
-    (match handler with 
-      Led led -> Ok led 
-      | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
-
-let nud token = 
-  match token.token_type with 
-      Literal _ -> get_literal token
     | _ -> 
       try let _, handler = Hashtbl.find prec_table token.token_type in 
       (match handler with 
@@ -99,8 +96,6 @@ let nud token =
         | Led _ -> Error (Unexpected_token "Expected nud for lparen"))
     with _ -> 
       Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
-
-module Parser (Stream : TOKEN_STREAM) = struct  
 
   let parse_expr rbp =
     let rec parse_expr_aux left =
@@ -111,14 +106,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
       else 
         let* lbp = match next.token_type with 
           Literal _-> Ok 0
-          | _ -> get_lbp next 
+          | _ -> lbp next 
         in 
         if rbp >= lbp then 
           Ok left
         else
           let _ = Stream.advance () in
-          let* led = get_led next in 
-          let* left = led left in 
+          let* left = led left next in 
             parse_expr_aux left
     in 
       let* next = Stream.take () in 
@@ -183,12 +177,25 @@ module Parser (Stream : TOKEN_STREAM) = struct
         then_expr = then_expr; 
         else_expr = else_expr})
 
+  let parse_pattern () = 
+    let* next = Stream.take () in 
+    match next.token_type with  
+      Literal Integer i -> Ok (Ast.ConstInteger i)
+    | Literal Decimal d -> Ok (Ast.ConstFloat d)
+    | Literal String s -> Ok (Ast.ConstString s)
+    | Literal Ident i -> Ok (Ast.ConstIdent i)
+    | Keywords True -> Ok (Ast.True)
+    | Keywords False -> Ok (Ast.False)
+    | Special Brackets -> Ok (Ast.EmptyBrackets)
+    | Special Wildcard -> Ok (Ast.Wildcard)
+    | _ -> Error (Unexpected_token ("expected a pattern but got " ^ (stringify_token next)))
+
   let parse_match_clause () = 
-    let* pattern = Stream.take () in 
+    let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
     let* _ = Stream.expect ("->") in 
     let* expr = parse_expr 0 in 
-      Ok ({Ast.pattern = pattern.lexeme; Ast.cmp_to = expr})
+      Ok ({Ast.pattern = pattern; Ast.cmp_to = expr}) 
 
   let parse_match_clauses () = 
     let rec parse_match_clauses_aux clauses =
@@ -207,19 +214,22 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* clauses = parse_match_clauses () in 
       Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
 
-  let parse_type_definition () = 
-    Ast.None
+  (* let parse_type_definition () = 
+    let* ident = Stream.expect ("ident") in 
+    Ast.None *)
 
-  let add_int_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Add (left, right))))
-  let sub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Subtract (left, right))))
-  let mult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (Multiply (left, right))))
-  let divide_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (Divide (left, right))))
+  let iadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (IAdd (left, right))))
+  let imult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IMultiply (left, right))))
+  let isub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (ISubtract (left, right))))
+  let idiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IDivide (left, right))))
 
   let add_to_prec_table token_type bp handler = 
     Hashtbl.add prec_table token_type (bp, handler)
 
-  let _ = add_to_prec_table (IntArithOp Plus) 20 add_int_handler
-  let _ = add_to_prec_table (IntArithOp Star) 30 mult_handler
+  let _ = add_to_prec_table (IntArithOp Plus) 20 iadd_handler
+  let _ = add_to_prec_table (IntArithOp Star) 30 imult_handler
+  let _ = add_to_prec_table (IntArithOp Minus) 20 isub_handler
+  let _ = add_to_prec_table (IntArithOp Slash) 30 idiv_handler
   let _ = add_to_prec_table LParen 70 (Nud parse_group)
   let _ = add_to_prec_table (Keywords If) 0 (Nud parse_if_expr)
   let _ = add_to_prec_table (Keywords Let) 0 (Nud parse_let_binding)
