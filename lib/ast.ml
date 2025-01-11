@@ -70,7 +70,7 @@ type module_item =
   | TypeDefintion of type_definition 
 
 and type_definition = {
-  name: string;
+  type_name: string;
   type_constructors: typ_con list
 }
 
@@ -102,7 +102,13 @@ let rec stringify_type typ = match typ with
 
 let rec stringify_module_item mi = match mi with 
     Expr e -> stringify_expr e 
-  | _ -> ""
+  | TypeDefintion td ->
+    let type_cons = List.fold_left (fun acc x -> acc ^ "|" ^ (stringify_type_con x)) "" td.type_constructors in
+      Printf.sprintf "TypeDefinition(%s = %s)" td.type_name type_cons
+
+and stringify_type_con v = 
+  let typ_string = match v.of_type with None -> "" | Some t -> " of " ^ stringify_type t in 
+    Printf.sprintf "%s%s" v.var_name typ_string  
 
 and stringify_expr expr = match expr with 
     String s -> Printf.sprintf "\"%s\"" s

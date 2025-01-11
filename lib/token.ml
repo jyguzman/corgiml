@@ -44,8 +44,17 @@ type special =
   | PttrnSeperator
   | Cons
 
+
+type type_annotation = 
+  | TInt 
+  | TFloat
+  | TBool
+  | TString 
+  | TNone 
+
 type token_type = 
   | Primary
+  | Annotation of type_annotation
   | Literal of literal
   | IntArithOp of int_arith
   | FloatArithOp of float_arith

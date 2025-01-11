@@ -20,7 +20,10 @@ let keywords = Keywords.of_seq @@ List.to_seq [
 
   ("begin", Keywords Begin); ("end", Keywords End);
 
-  ("of", Keywords Of); ("type", Keywords Type)
+  ("of", Keywords Of); ("type", Keywords Type);
+
+  ("int", Annotation TInt); ("float", Annotation TFloat); ("string", Annotation TString);
+  ("bool", Annotation TBool); ("None", Annotation TNone)
 
 ];;
 
@@ -113,7 +116,10 @@ let tokenize_ident lexer =
     let ident, updated_lexer = tokenize_ident lexer "" in
     let keyword = Keywords.find_opt ident keywords in 
     let name, token_type = match keyword with 
-      | Some keyword_type -> ident, keyword_type
+      | Some keyword_type -> 
+        (match keyword_type with 
+          Annotation _ -> "annotation", keyword_type
+          | _ -> ident, keyword_type)
       | None -> "ident", Literal (Ident ident)
     in
     let token = Token.make name token_type ident lexer.line lexer.col in

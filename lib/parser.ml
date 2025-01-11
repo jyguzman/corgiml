@@ -6,6 +6,7 @@ type parse_error =
   | Unexpected_eof of string
   | Unexpected_token of string
   | Invalid_rec_let_binding of string
+  | Unsupported_type of string
 
 let (let+) o f = match o with 
   Some v -> f v 
@@ -42,11 +43,11 @@ module TokenStream : TOKEN_STREAM = struct
     [] -> Error (Unexpected_eof "unexpected end of file")  
   | x :: _ -> Ok x
 
-  let expect lexeme = match !tokens with 
+  let expect lexeme_or_name = match !tokens with 
     [] -> Error (Unexpected_token "unexpected end of file")
   | x :: _ -> 
-    if x.lexeme = lexeme then let _ = advance () in Ok (x)
-    else Error (Unexpected_token ("expected " ^ lexeme ^ " but got " ^ stringify_token x))
+    if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then let _ = advance () in Ok (x)
+    else Error (Unexpected_token ("expected " ^ lexeme_or_name ^ " but got " ^ stringify_token x))
 
   let accept lexeme_or_name = match !tokens with 
     [] -> false
@@ -79,7 +80,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       None -> Error (Unexpected_token ("unexpected token getting led: " ^ stringify_token token))
     | Some (_, handler) ->
       (match handler with 
-        Led led -> let* expr = led left in Ok expr
+          Led led -> let* expr = led left in Ok expr
         | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
 
   let nud token = 
@@ -109,7 +110,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
         Ok left 
       else 
         let* lbp = match next.token_type with 
-          Literal _-> Ok 0
+          Literal _ -> Ok 0
           | _ -> lbp next 
         in 
         if rbp >= lbp then 
@@ -224,8 +225,43 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* clauses = parse_match_clauses () in 
       Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
 
+  let parse_type_con_type lexeme = 
+    match lexeme with 
+        "int" -> Ok Ast.TInt 
+      | "float" -> Ok Ast.TFloat 
+      | "string" -> Ok Ast.TString
+      | "bool" -> Ok Ast.TBool 
+      | "None" -> Ok Ast.TNone 
+      | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" lexeme))
+
+  let parse_type_constructor () = 
+    let* ident = Stream.expect ("ident") in 
+    let* typ = if Stream.accept ("of") then
+        let* annotation = Stream.expect ("annotation") in 
+        let* typ = parse_type_con_type annotation.lexeme in 
+          Ok (Some typ)
+      else 
+        Ok None
+    in 
+      Ok ({Ast.var_name = ident.lexeme; of_type = typ})
+
+  let parse_type_constructors () = 
+    let rec parse_type_constructors_aux typ_cons =
+      if Stream.accept ("|") then 
+        let* typ_con = parse_type_constructor () in
+          parse_type_constructors_aux (typ_con :: typ_cons)
+      else 
+          Ok (List.rev typ_cons)
+    in 
+      let* typ_con = parse_type_constructor () in 
+        parse_type_constructors_aux [typ_con]
+
   let parse_type_definition () = 
-    Ok Ast.None
+    let* _ = Stream.expect ("type") in 
+    let* ident = Stream.expect ("ident") in 
+    let* _ = Stream.expect ("=") in 
+    let* variants = parse_type_constructors () in
+      Ok (Ast.TypeDefintion {type_name = ident.lexeme; type_constructors = variants})
 
   let parse_function_application () = 
     let* ident = Stream.expect ("ident") in 
@@ -236,7 +272,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* next = Stream.take () in 
     match next.token_type with 
       Keywords Type -> parse_type_definition () 
-    | _ -> expr ()
+    | _ -> let* expr = expr () in Ok (Ast.Expr expr)
 
   let parse_program () = 
     let rec parse_program_aux module_items = 
@@ -270,7 +306,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = add_to_prec_table (FloatArithOp StarDot) 30 fmult_handler
   let _ = add_to_prec_table (FloatArithOp MinusDot) 20 fsub_handler
   let _ = add_to_prec_table (FloatArithOp SlashDot) 30 fdiv_handler
-  let _ = add_to_prec_table LParen 70 (Nud parse_group)
+
+  let _ = add_to_prec_table LParen 0 (Nud parse_group)
   let _ = add_to_prec_table (Keywords If) 0 (Nud parse_if_expr)
   let _ = add_to_prec_table (Keywords Let) 0 (Nud parse_let_binding)
   let _ = add_to_prec_table (Keywords Match) 0 (Nud parse_pattern_match)

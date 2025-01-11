@@ -2,10 +2,14 @@ let x = 5
 
 let square x = x * x in square 
 
+let z = 10 in z + y
+
 10 + 5 * 8
 
 10
 
 "dssd"
 
-x
+(10 + 3) * 5
+
+type shape = Circle of int | Shape of int
