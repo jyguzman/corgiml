@@ -18,10 +18,10 @@ let tokens = Lexer.tokenize_source source in
 
 let _ = print_endline (stringify_tokens tokens) in 
 
-let expr = Parser.parse tokens in 
+let p = Parser.parse tokens in 
 
-match expr with 
-    Ok e -> print_endline (Ast.stringify_expr e)
+match p with 
+    Ok p -> print_endline (List.fold_left (fun acc x -> acc ^ (Ast.stringify_expr x) ^ "\n") "" p)
   | Error e -> (match e with 
       Parser.Unexpected_eof s -> print_endline s
     | Parser.Unexpected_token s -> print_endline s

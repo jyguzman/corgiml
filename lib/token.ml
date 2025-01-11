@@ -30,6 +30,7 @@ type keywords =
   | Fun
   | Begin | End
   | Of
+  | Type
 
 type literal = 
   | Integer of int
@@ -58,6 +59,7 @@ type token_type =
   | LBracket 
   | RBracket
   | Colon 
+  | Semicolon
 
 let get_token_type token_type = 
   match token_type with 

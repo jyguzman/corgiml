@@ -97,7 +97,11 @@ module Parser (Stream : TOKEN_STREAM) = struct
     with _ -> 
       Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
 
-  let parse_expr rbp =
+
+  let rec expr () = 
+    parse_expr 0
+
+  and parse_expr rbp =
     let rec parse_expr_aux left =
       if Stream.eof () then Ok left else 
       let* next = Stream.take () in
@@ -121,7 +125,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
         parse_expr_aux left
 
   let parse_group () = 
-    let* inner = parse_expr 0 in
+    let* inner = expr () in
     let* _ = Stream.expect(")") in
       Ok (Ast.Grouping inner)  
     
@@ -144,7 +148,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_function () =
     let* params = parse_params () in 
     let* _ = Stream.expect ("->") in
-    let* body = parse_expr 0 in
+    let* body = expr () in
       Ok (make_fn_node params body)
 
   let parse_let_binding () = 
@@ -158,24 +162,30 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let name = List.hd idents in
       let* _ = Stream.expect ("=") in 
       let* expr_after_equal = if num_idents = 1 then 
-        parse_expr 0 
+        expr () 
       else 
-        let* body = parse_expr 0 in 
+        let* body = expr () in 
           Ok (make_fn_node (List.tl idents) body)
       in
-      let* _ = Stream.expect ("in") in 
-      let* expr_after_in = parse_expr 0 in 
+      let* expr_after_in = if Stream.accept ("in") then
+        let* expr = expr () in Ok (Some expr)
+      else 
+        Ok None 
+      in 
         Ok (Ast.LetBinding (is_rec, name, expr_after_equal, expr_after_in))
 
   let parse_if_expr () = 
-    let* then_cond = parse_expr 0 in 
+    let* then_cond = expr () in 
     let* _ = Stream.expect ("then") in 
-    let* then_expr = parse_expr 0 in 
-    let* else_expr = if Stream.accept ("else") then parse_expr 0 else Ok None in 
-      Ok (Ast.IfExpr {
-        then_cond = then_cond; 
-        then_expr = then_expr; 
-        else_expr = else_expr})
+    let* then_expr = expr () in 
+    let* else_expr = if Stream.accept ("else") then 
+      expr () 
+    else 
+      Ok None in  
+    Ok (Ast.IfExpr {
+      then_cond = then_cond; 
+      then_expr = then_expr; 
+      else_expr = else_expr})
 
   let parse_pattern () = 
     let* next = Stream.take () in 
@@ -194,7 +204,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
     let* _ = Stream.expect ("->") in 
-    let* expr = parse_expr 0 in 
+    let* expr = expr () in 
       Ok ({Ast.pattern = pattern; Ast.cmp_to = expr}) 
 
   let parse_match_clauses () = 
@@ -209,19 +219,45 @@ module Parser (Stream : TOKEN_STREAM) = struct
         parse_match_clauses_aux [clause] 
 
   let parse_pattern_match () = 
-    let* match_expr = parse_expr 0 in 
+    let* match_expr = expr () in 
     let* _ = Stream.expect ("with") in
     let* clauses = parse_match_clauses () in 
       Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
 
-  (* let parse_type_definition () = 
+  let parse_type_definition () = 
+    Ok Ast.None
+
+  let parse_function_application () = 
     let* ident = Stream.expect ("ident") in 
-    Ast.None *)
+    let* arg = expr () in 
+      Ok (Ast.FnApp {fn_name = ident.lexeme; arg = arg})
+
+  let parse_module_item () =
+    let* next = Stream.take () in 
+    match next.token_type with 
+      Keywords Type -> parse_type_definition () 
+    | _ -> expr ()
+
+  let parse_program () = 
+    let rec parse_program_aux module_items = 
+      if Stream.eof () then 
+        Ok (List.rev module_items)
+      else 
+        let* item = parse_module_item () in 
+          parse_program_aux (item :: module_items)
+    in 
+      parse_program_aux []
 
   let iadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (IAdd (left, right))))
   let imult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IMultiply (left, right))))
   let isub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (ISubtract (left, right))))
   let idiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IDivide (left, right))))
+
+  let fadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (IAdd (left, right))))
+  let fmult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IMultiply (left, right))))
+  let fsub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (ISubtract (left, right))))
+  let fdiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IDivide (left, right))))
+  (* let less_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Ast.L (left, right)))) *)
 
   let add_to_prec_table token_type bp handler = 
     Hashtbl.add prec_table token_type (bp, handler)
@@ -230,6 +266,10 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = add_to_prec_table (IntArithOp Star) 30 imult_handler
   let _ = add_to_prec_table (IntArithOp Minus) 20 isub_handler
   let _ = add_to_prec_table (IntArithOp Slash) 30 idiv_handler
+  let _ = add_to_prec_table (FloatArithOp PlusDot) 20 fadd_handler
+  let _ = add_to_prec_table (FloatArithOp StarDot) 30 fmult_handler
+  let _ = add_to_prec_table (FloatArithOp MinusDot) 20 fsub_handler
+  let _ = add_to_prec_table (FloatArithOp SlashDot) 30 fdiv_handler
   let _ = add_to_prec_table LParen 70 (Nud parse_group)
   let _ = add_to_prec_table (Keywords If) 0 (Nud parse_if_expr)
   let _ = add_to_prec_table (Keywords Let) 0 (Nud parse_let_binding)
@@ -242,4 +282,4 @@ module ParserImpl = Parser(TokenStream)
 
 let parse tokens = 
   let _ = TokenStream.init tokens in 
-  ParserImpl.parse_expr 0
+  ParserImpl.parse_program ()

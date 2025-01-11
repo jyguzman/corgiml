@@ -20,7 +20,7 @@ let keywords = Keywords.of_seq @@ List.to_seq [
 
   ("begin", Keywords Begin); ("end", Keywords End);
 
-  ("of", Keywords Of)
+  ("of", Keywords Of); ("type", Keywords Type)
 
 ];;
 
@@ -124,7 +124,7 @@ let tokenize_op lexer c =
   let next = peek lexer 1 in 
   let name, op, lexeme = match c with
 
-    | '(' -> ("lparen", LParen, "(") | ')' -> ("rparen", RParen, ")")
+    | '(' -> ("lparen", LParen, "(") | ')' -> ("rparen", RParen, ")") | ';' -> ("semicolon", Semicolon, ";")
     | '[' -> if next = ']' then ("brackets", Special Brackets, "[]") else ("lbracket", LBracket, "]")
     | ':' -> if next = ':' then ("cons", Special Cons, "::") else ("colon", Colon, ":")
     | '*' -> if next = '.' then ("star", FloatArithOp StarDot, "*.") else ("star", IntArithOp Star, "*")

@@ -1,1 +1,11 @@
-3 + 5 / (6 + 8)
+let x = 5
+
+let square x = x * x in square 
+
+10 + 5 * 8
+
+10
+
+"dssd"
+
+x
