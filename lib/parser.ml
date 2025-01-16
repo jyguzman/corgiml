@@ -102,7 +102,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       with _ -> 
         Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
 
-  let rec led left token = 
+  let led left token = 
     let prec = Hashtbl.find_opt prec_table token.lexeme in 
     match prec with 
       None -> Error (Unexpected_token ("unexpected token " ^ stringify_token token))
@@ -111,7 +111,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
           Led led -> let* expr = led left in Ok expr
         | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
 
-  and expr () = 
+  let rec expr () = 
     parse_expr 0
 
   and parse_expr rbp =
