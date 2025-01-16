@@ -24,7 +24,7 @@ type expr =
   | IfExpr of {
     then_cond: expr; 
     then_expr: expr;
-    else_expr: expr;
+    else_expr: expr option;
   }
   | LetBinding of bool * string * expr * expr option
   | Function of {
@@ -32,7 +32,7 @@ type expr =
     expr: expr;
   }
   | FnApp of {
-    fn_name: string;
+    fn: expr;
     arg: expr;
   }
   | MatchClause of match_clause
@@ -75,7 +75,8 @@ and type_definition = {
 }
 
 and typ_con = {
-  var_name: string;
+  type_def_name: string;
+  con_name: string;
   of_type: typ option
 }
 
@@ -108,7 +109,10 @@ let rec stringify_module_item mi = match mi with
 
 and stringify_type_con v = 
   let typ_string = match v.of_type with None -> "" | Some t -> " of " ^ stringify_type t in 
-    Printf.sprintf "%s%s" v.var_name typ_string  
+    Printf.sprintf "%s%s" v.con_name typ_string  
+
+and stringify_expr_list exprs = 
+  List.fold_left (fun acc expr -> acc ^ (stringify_expr expr) ^ ",") "" exprs 
 
 and stringify_expr expr = match expr with 
     String s -> Printf.sprintf "\"%s\"" s
@@ -135,14 +139,16 @@ and stringify_expr expr = match expr with
     let in_string = (match r with None -> "" | Some e -> " in " ^ stringify_expr e) in  
       Printf.sprintf "Let(%s%s = %s%s)" rec_str pat (stringify_expr l) in_string
   | IfExpr i -> 
-      Printf.sprintf "If(%s then %s else %s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr) (stringify_expr i.else_expr)
+      let else_str = match i.else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
+      Printf.sprintf "If(%s then %s%s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr) else_str
   | Function f -> 
       Printf.sprintf "Fun(%s -> %s)" f.param (stringify_expr f.expr)
   | PatternMatch pm -> 
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr pm.match_expr) (stringify_match_clauses pm.clauses)
   | FnApp fa -> 
-      Printf.sprintf "FnApp(fn_name = %s, arg = %s)" fa.fn_name (stringify_expr fa.arg)
-  | None | _ -> ""
+      Printf.sprintf "FnApp(fn = %s, arg = %s)" (stringify_expr fa.fn) (stringify_expr fa.arg)
+  | None -> "None"
+  | _ -> ""
 
 and stringify_params params = List.fold_left (fun acc x -> acc ^ x ^ " ") "" params
 

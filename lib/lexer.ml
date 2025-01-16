@@ -163,7 +163,7 @@ let tokenize_op lexer c =
 let tokenize_source source = 
   let rec tokenize_source lexer = 
     if String.length lexer.current = 0 then 
-      let eof = Token.make "eof" EOF "" lexer.line lexer.col in {lexer with tokens = eof :: lexer.tokens} 
+      let eof = Token.make "eof" EOF "eof" lexer.line lexer.col in {lexer with tokens = eof :: lexer.tokens} 
     else
       let c = peek lexer 0 in
       let skip = cut_first_n lexer.current 1 in 

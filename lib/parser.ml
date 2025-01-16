@@ -46,18 +46,22 @@ module TokenStream : TOKEN_STREAM = struct
   let expect lexeme_or_name = match !tokens with 
     [] -> Error (Unexpected_token "unexpected end of file")
   | x :: _ -> 
-    if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then let _ = advance () in Ok (x)
-    else Error (Unexpected_token ("expected " ^ lexeme_or_name ^ " but got " ^ stringify_token x))
+    if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then 
+      let _ = advance () in Ok (x)
+    else 
+      Error (Unexpected_token ("expected " ^ lexeme_or_name ^ " but got " ^ stringify_token x))
 
   let accept lexeme_or_name = match !tokens with 
     [] -> false
   | x :: _ -> 
-    if x.lexeme = lexeme_or_name || x.name = lexeme_or_name 
-      then let _ = advance () in true else false
+    if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then 
+      let _ = advance () in true 
+    else 
+      false
 
   let eof () = match !tokens with 
-      [] -> false 
-      | x :: _ -> x.token_type = EOF
+      | [] | [_] -> true 
+      | _ -> false
 end
 
 type handler = 
@@ -67,62 +71,71 @@ type handler =
 
 module Parser (Stream : TOKEN_STREAM) = struct  
   let prec_table = Hashtbl.create 64
+  let bp_table = Hashtbl.create 64
 
-  let lbp token = 
-    let prec_info = Hashtbl.find_opt prec_table token.token_type in 
-    match prec_info with 
-      Some (lbp, _) -> Ok lbp
-    | None -> Error (Unexpected_token ("Unexpected token getting lbp " ^ stringify_token token))
+  let set_bp op_lexeme bp = Hashtbl.add bp_table op_lexeme bp
 
-  let led left token = 
-    let prec = Hashtbl.find_opt prec_table token.token_type in 
-    match prec with 
-      None -> Error (Unexpected_token ("unexpected token getting led: " ^ stringify_token token))
-    | Some (_, handler) ->
-      (match handler with 
-          Led led -> let* expr = led left in Ok expr
-        | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
+  let _ = set_bp "if" 5
+  let _ = List.iter (fun op -> set_bp op 10) ["<"; "<="; ">"; ">="; "="]
+  let _ = List.iter (fun op -> set_bp op 20) ["+"; "+."; "-"; "-."]
+  let _ = List.iter (fun op -> set_bp op 30) ["*"; "*."; "/"; "/."]
+  let _ = List.iter (fun t -> set_bp t 0) ["fun"; "let"; "match"] 
+  let _ = List.iter (fun t -> set_bp t 0) [")"; "->"; "|"; "of"; "in"; "type"; "with"; "then"; "else"; "eof"]
+
+  let lbp token =   
+    try Ok (Hashtbl.find bp_table token.lexeme)
+    with _ -> Error (Unexpected_token ("Unexpected token " ^ stringify_token token))
 
   let nud token = 
     match token.token_type with 
       Literal l -> (match l with 
-        Integer i -> Ok (Ast.Integer i)
-      | Decimal d -> Ok (Ast.Float d)
-      | String s -> Ok (Ast.String s)
-      | Ident i -> Ok (Ast.Ident i))
+          Integer i -> Ok (Ast.Integer i)
+        | Decimal d -> Ok (Ast.Float d)
+        | String s -> Ok (Ast.String s)
+        | Ident i -> Ok (Ast.Ident i))
+    | Keywords True -> Ok (Ast.Bool true)
+    | Keywords False -> Ok (Ast.Bool false)
     | _ -> 
-      try let _, handler = Hashtbl.find prec_table token.token_type in 
+      try match Hashtbl.find prec_table token.lexeme with 
+        Nud nud -> nud ()
+      | Led _ -> Error (Unexpected_token ("Unexpected token for start of expression: " ^ stringify_token token))
+      with _ -> 
+        Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
+
+  let rec led left token = 
+    let prec = Hashtbl.find_opt prec_table token.lexeme in 
+    match prec with 
+      None -> Error (Unexpected_token ("unexpected token " ^ stringify_token token))
+    | Some handler ->
       (match handler with 
-        Nud n -> n ()
-        | Led _ -> Error (Unexpected_token "Expected nud for lparen"))
-    with _ -> 
-      Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
+          Led led -> let* expr = led left in Ok expr
+        | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
 
-
-  let rec expr () = 
+  and expr () = 
     parse_expr 0
 
   and parse_expr rbp =
     let rec parse_expr_aux left =
-      if Stream.eof () then Ok left else 
-      let* next = Stream.take () in
-      if Hashtbl.find_opt prec_table next.token_type = None then 
-        Ok left 
+      let* curr = Stream.take () in
+      let* lbp = if Hashtbl.find_opt bp_table curr.lexeme <> None then 
+        lbp curr
       else 
-        let* lbp = match next.token_type with 
-          Literal _ -> Ok 0
-          | _ -> lbp next 
-        in 
-        if rbp >= lbp then 
-          Ok left
-        else
+        Ok 70 
+      in if rbp >= lbp then 
+        Ok left
+      else
+        let* left = if lbp = 70 then 
+          let* arg = parse_expr 71 in 
+            Ok (Ast.FnApp {fn = left; arg = arg})
+        else 
           let _ = Stream.advance () in
-          let* left = led left next in 
-            parse_expr_aux left
+            led left curr 
+        in
+          parse_expr_aux left
     in 
-      let* next = Stream.take () in 
+      let* curr = Stream.take () in 
       let _ = Stream.advance () in
-      let* left = nud next in 
+      let* left = nud curr in
         parse_expr_aux left
 
   let parse_group () = 
@@ -180,7 +193,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* _ = Stream.expect ("then") in 
     let* then_expr = expr () in 
     let* else_expr = if Stream.accept ("else") then 
-      expr () 
+      let* expr = expr () in Ok (Some expr)
     else 
       Ok None in  
     Ok (Ast.IfExpr {
@@ -225,48 +238,46 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* clauses = parse_match_clauses () in 
       Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
 
-  let parse_type_con_type lexeme = 
-    match lexeme with 
+  let parse_type_con_type token = 
+    match token.lexeme with 
         "int" -> Ok Ast.TInt 
       | "float" -> Ok Ast.TFloat 
       | "string" -> Ok Ast.TString
       | "bool" -> Ok Ast.TBool 
       | "None" -> Ok Ast.TNone 
-      | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" lexeme))
+      | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
 
-  let parse_type_constructor () = 
+  let parse_type_constructor type_def_name = 
     let* ident = Stream.expect ("ident") in 
     let* typ = if Stream.accept ("of") then
         let* annotation = Stream.expect ("annotation") in 
-        let* typ = parse_type_con_type annotation.lexeme in 
+        let* typ = parse_type_con_type annotation in 
           Ok (Some typ)
       else 
         Ok None
     in 
-      Ok ({Ast.var_name = ident.lexeme; of_type = typ})
+      Ok ({Ast.type_def_name = type_def_name; Ast.con_name = ident.lexeme; of_type = typ})
 
-  let parse_type_constructors () = 
+  let parse_type_constructors type_def_name = 
     let rec parse_type_constructors_aux typ_cons =
       if Stream.accept ("|") then 
-        let* typ_con = parse_type_constructor () in
+        let* typ_con = parse_type_constructor type_def_name in
           parse_type_constructors_aux (typ_con :: typ_cons)
       else 
           Ok (List.rev typ_cons)
     in 
-      let* typ_con = parse_type_constructor () in 
+      let* typ_con = parse_type_constructor type_def_name in 
         parse_type_constructors_aux [typ_con]
 
   let parse_type_definition () = 
     let* _ = Stream.expect ("type") in 
     let* ident = Stream.expect ("ident") in 
     let* _ = Stream.expect ("=") in 
-    let* variants = parse_type_constructors () in
+    let* variants = parse_type_constructors ident.lexeme in
       Ok (Ast.TypeDefintion {type_name = ident.lexeme; type_constructors = variants})
 
-  let parse_function_application () = 
-    let* ident = Stream.expect ("ident") in 
-    let* arg = expr () in 
-      Ok (Ast.FnApp {fn_name = ident.lexeme; arg = arg})
+  let parse_constructor_application () =
+    Ast.None
 
   let parse_module_item () =
     let* next = Stream.take () in 
@@ -293,25 +304,25 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let fmult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IMultiply (left, right))))
   let fsub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (ISubtract (left, right))))
   let fdiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (Ast.BinOp (IDivide (left, right))))
-  (* let less_handler = Led (fun left -> let* right = parse_expr 20 in Ok (Ast.BinOp (Ast.L (left, right)))) *)
 
-  let add_to_prec_table token_type bp handler = 
-    Hashtbl.add prec_table token_type (bp, handler)
+  let less_handler = Led (fun left -> let* right = parse_expr 10 in Ok (Ast.BinOp (Less (left, right))))
+  let leq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (Ast.BinOp (Leq (left, right))))
 
-  let _ = add_to_prec_table (IntArithOp Plus) 20 iadd_handler
-  let _ = add_to_prec_table (IntArithOp Star) 30 imult_handler
-  let _ = add_to_prec_table (IntArithOp Minus) 20 isub_handler
-  let _ = add_to_prec_table (IntArithOp Slash) 30 idiv_handler
-  let _ = add_to_prec_table (FloatArithOp PlusDot) 20 fadd_handler
-  let _ = add_to_prec_table (FloatArithOp StarDot) 30 fmult_handler
-  let _ = add_to_prec_table (FloatArithOp MinusDot) 20 fsub_handler
-  let _ = add_to_prec_table (FloatArithOp SlashDot) 30 fdiv_handler
+  let greater_handler = Led (fun left -> let* right = parse_expr 10 in Ok (Ast.BinOp (Greater (left, right))))
 
-  let _ = add_to_prec_table LParen 0 (Nud parse_group)
-  let _ = add_to_prec_table (Keywords If) 0 (Nud parse_if_expr)
-  let _ = add_to_prec_table (Keywords Let) 0 (Nud parse_let_binding)
-  let _ = add_to_prec_table (Keywords Match) 0 (Nud parse_pattern_match)
-  let _ = add_to_prec_table (Keywords Fun) 0 (Nud parse_function)
+  let geq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (Ast.BinOp (Geq (left, right))))
+
+  let set_handler lexeme handler = Hashtbl.add prec_table lexeme handler
+
+  let _= List.iter2 (fun t h -> set_handler t h) ["+"; "*"; "-"; "/"] [iadd_handler; imult_handler; isub_handler; idiv_handler]
+  let _= List.iter2 (fun t h -> set_handler t h) ["+."; "*."; "-."; "/."] [fadd_handler; fmult_handler; fsub_handler; fdiv_handler]
+  let _= List.iter2 (fun t h -> set_handler t h) ["<"; "<="; ">"; ">="] [less_handler; leq_handler; greater_handler; geq_handler]
+
+  let _ = set_handler "(" (Nud parse_group)
+  let _ = set_handler "if" (Nud parse_if_expr)
+  let _ = set_handler "let" (Nud parse_let_binding)
+  let _ = set_handler "match" (Nud parse_pattern_match)
+  let _ = set_handler "fun" (Nud parse_function)
 
 end
 

@@ -1,15 +1,10 @@
-let x = 5
+x + y + z
 
-let square x = x * x in square 
+let w = (fun x y z -> x + y + z) x y z
 
-let z = 10 in z + y
+let x = 50 in 
+let y = 100 in
+let z = double x y in 
+(x + y) * z
 
-10 + 5 * 8
-
-10
-
-"dssd"
-
-(10 + 3) * 5
-
-type shape = Circle of int | Shape of int
+type shape = Circle of int | Square of int
