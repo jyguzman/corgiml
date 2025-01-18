@@ -1,10 +1,1 @@
-x + y + z
-
-let w = (fun x y z -> x + y + z) x y z
-
-let x = 50 in 
-let y = 100 in
-let z = double x y in 
-(x + y) * z
-
-type shape = Circle of int | Square of int
+let do_thing () = print_endline "hello"

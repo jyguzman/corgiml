@@ -22,6 +22,7 @@ module type TOKEN_STREAM = sig
   val advance: unit -> unit 
   val expect: string -> (token, parse_error) result
   val accept: string -> bool
+  val accept_any: string list -> bool
   val take: unit -> (token, parse_error) result
   val eof: unit -> bool
 end
@@ -43,7 +44,7 @@ module TokenStream : TOKEN_STREAM = struct
     [] -> Error (Unexpected_eof "unexpected end of file")  
   | x :: _ -> Ok x
 
-  let expect lexeme_or_name = match !tokens with 
+  let expect (lexeme_or_name: string) = match !tokens with 
     [] -> Error (Unexpected_token "unexpected end of file")
   | x :: _ -> 
     if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then 
@@ -58,6 +59,10 @@ module TokenStream : TOKEN_STREAM = struct
       let _ = advance () in true 
     else 
       false
+
+  let accept_any strings = match !tokens with 
+    [] -> false
+  | x :: _ -> List.mem x.lexeme strings || List.mem x.name strings 
 
   let eof () = match !tokens with 
       | [] | [_] -> true 
@@ -103,13 +108,11 @@ module Parser (Stream : TOKEN_STREAM) = struct
         Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
 
   let led left token = 
-    let prec = Hashtbl.find_opt prec_table token.lexeme in 
-    match prec with 
+    match Hashtbl.find_opt prec_table token.lexeme with 
       None -> Error (Unexpected_token ("unexpected token " ^ stringify_token token))
-    | Some handler ->
-      (match handler with 
-          Led led -> let* expr = led left in Ok expr
-        | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
+    | Some handler -> (match handler with 
+        Led led -> let* expr = led left in Ok expr
+      | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
 
   let rec expr () = 
     parse_expr 0
@@ -120,7 +123,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* lbp = if Hashtbl.find_opt bp_table curr.lexeme <> None then 
         lbp curr
       else 
-        Ok 70 
+        Ok 70 (* function application *)
       in if rbp >= lbp then 
         Ok left
       else
@@ -142,51 +145,63 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* inner = expr () in
     let* _ = Stream.expect(")") in
       Ok (Ast.Grouping inner)  
-    
-  let parse_params () = 
-    let rec parse_params_aux params = 
-      let* ident = Stream.take () in
-      match ident.token_type with 
-        Literal Ident i -> 
-          let _ = Stream.advance () in  
-            parse_params_aux (i :: params) 
-      | _ -> 
-          Ok (List.rev params)
-  in 
-    parse_params_aux [] 
-    
+
+  let parse_pattern () = 
+    let* next = Stream.take () in 
+    match next.token_type with  
+      Literal Integer i -> Ok (Ast.ConstInteger i)
+    | Literal Decimal d -> Ok (Ast.ConstFloat d)
+    | Literal String s -> Ok (Ast.ConstString s)
+    | Literal Ident i -> Ok (Ast.ConstIdent i)
+    | Keywords True -> Ok (Ast.True)
+    | Keywords False -> Ok (Ast.False)
+    | Special EmptyParens -> Ok (Ast.EmptyParens)
+    | Special Wildcard -> Ok (Ast.Wildcard)
+    | _ -> Error (Unexpected_token ("expected a pattern but got " ^ (stringify_token next)))
+
+  let parse_patterns () = 
+    let rec parse_patterns_aux patterns = 
+      if Stream.accept_any (["ident"; "true"; "false"; "()"; "_"]) then 
+        let* pattern = parse_pattern () in
+        let _ = Stream.advance () in
+          parse_patterns_aux (pattern :: patterns)
+      else 
+        Ok (List.rev patterns)
+    in 
+      parse_patterns_aux [] 
+
   let make_fn_node params body = 
     let params = List.rev params in 
       List.fold_left (fun fn param -> Ast.Function {param = param; expr = fn}) body params
 
   let parse_function () =
-    let* params = parse_params () in 
+    let* patterns = parse_patterns () in 
     let* _ = Stream.expect ("->") in
     let* body = expr () in
-      Ok (make_fn_node params body)
+      Ok (make_fn_node patterns body)
 
   let parse_let_binding () = 
     let is_rec = Stream.accept ("rec") in 
-    let* idents = parse_params () in
+    let* idents = parse_patterns () in
     let num_idents = List.length idents in 
     if is_rec && num_idents < 2 then 
       let* curr_token = Stream.take () in 
       Error (Invalid_rec_let_binding ("'rec' expects at least two identifiers: function name then parameters at line " ^ string_of_int curr_token.line))
     else 
-      let name = List.hd idents in
+      let lhs = List.hd idents in
       let* _ = Stream.expect ("=") in 
-      let* expr_after_equal = if num_idents = 1 then 
+      let* rhs = if num_idents = 1 then 
         expr () 
       else 
         let* body = expr () in 
           Ok (make_fn_node (List.tl idents) body)
       in
-      let* expr_after_in = if Stream.accept ("in") then
+      let* body = if Stream.accept ("in") then
         let* expr = expr () in Ok (Some expr)
       else 
         Ok None 
       in 
-        Ok (Ast.LetBinding (is_rec, name, expr_after_equal, expr_after_in))
+        Ok (Ast.LetBinding (is_rec, lhs, rhs, body))
 
   let parse_if_expr () = 
     let* then_cond = expr () in 
@@ -201,42 +216,29 @@ module Parser (Stream : TOKEN_STREAM) = struct
       then_expr = then_expr; 
       else_expr = else_expr})
 
-  let parse_pattern () = 
-    let* next = Stream.take () in 
-    match next.token_type with  
-      Literal Integer i -> Ok (Ast.ConstInteger i)
-    | Literal Decimal d -> Ok (Ast.ConstFloat d)
-    | Literal String s -> Ok (Ast.ConstString s)
-    | Literal Ident i -> Ok (Ast.ConstIdent i)
-    | Keywords True -> Ok (Ast.True)
-    | Keywords False -> Ok (Ast.False)
-    | Special Brackets -> Ok (Ast.EmptyBrackets)
-    | Special Wildcard -> Ok (Ast.Wildcard)
-    | _ -> Error (Unexpected_token ("expected a pattern but got " ^ (stringify_token next)))
-
-  let parse_match_clause () = 
+  let parse_match_case () = 
     let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
     let* _ = Stream.expect ("->") in 
     let* expr = expr () in 
-      Ok ({Ast.pattern = pattern; Ast.cmp_to = expr}) 
+      Ok ({Ast.lhs = pattern; rhs = expr}) 
 
-  let parse_match_clauses () = 
-    let rec parse_match_clauses_aux clauses =
+  let parse_match_cases () = 
+    let rec parse_match_cases_aux cases =
       if Stream.accept ("|") then 
-        let* clause = parse_match_clause () in
-          parse_match_clauses_aux (clause :: clauses)
+        let* case = parse_match_case () in
+          parse_match_cases_aux (case :: cases)
       else 
-          Ok (List.rev clauses)
+          Ok (List.rev cases)
     in 
-      let* clause = parse_match_clause () in 
-        parse_match_clauses_aux [clause] 
+      let* case = parse_match_case () in 
+      parse_match_cases_aux [case] 
 
   let parse_pattern_match () = 
     let* match_expr = expr () in 
     let* _ = Stream.expect ("with") in
-    let* clauses = parse_match_clauses () in 
-      Ok (Ast.PatternMatch {match_expr = match_expr; clauses = clauses})
+    let* cases = parse_match_cases () in 
+      Ok (Ast.PatternMatch (match_expr, cases))
 
   let parse_type_con_type token = 
     match token.lexeme with 
@@ -283,7 +285,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* next = Stream.take () in 
     match next.token_type with 
       Keywords Type -> parse_type_definition () 
-    | _ -> let* expr = expr () in Ok (Ast.Expr expr)
+    | _ -> 
+      let* expr = expr () in match expr with 
+        | Ast.LetBinding (is_rec, lhs, rhs, body) -> 
+          (match body with 
+              None -> Ok (Ast.LetDecl (is_rec, lhs, rhs))
+            | Some _ -> Ok (Ast.Expr expr))
+        | _ -> Ok (Ast.Expr expr)
 
   let parse_program () = 
     let rec parse_program_aux module_items = 

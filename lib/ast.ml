@@ -8,7 +8,6 @@ type pattern =
   | EmptyBrackets 
   | EmptyParens
   | Wildcard
-  | Cons of string * string
 
 type expr = 
   | None
@@ -26,25 +25,21 @@ type expr =
     then_expr: expr;
     else_expr: expr option;
   }
-  | LetBinding of bool * string * expr * expr option
+  | LetBinding of bool * pattern * expr * expr option
   | Function of {
-    param: string; 
+    param: pattern; 
     expr: expr;
   }
   | FnApp of {
     fn: expr;
     arg: expr;
   }
-  | MatchClause of match_clause
 
-  | PatternMatch of {
-    match_expr: expr;
-    clauses: match_clause list;
-  }
+  | PatternMatch of expr * case list
 
-  and match_clause = {
-    pattern: pattern;
-    cmp_to: expr;
+  and case = {
+    lhs: pattern;
+    rhs: expr;
   }
 
 and bin_op = 
@@ -67,6 +62,7 @@ and un_op =
 
 type module_item =
   | Expr of expr
+  | LetDecl of bool * pattern * expr 
   | TypeDefintion of type_definition 
 
 and type_definition = {
@@ -102,7 +98,9 @@ let rec stringify_type typ = match typ with
       Printf.sprintf "%s) -> %s" param_str (stringify_type tf.ret_type)
 
 let rec stringify_module_item mi = match mi with 
-    Expr e -> stringify_expr e 
+  Expr e -> stringify_expr e 
+  | LetDecl (is_rec, pattern, rhs) -> 
+      Printf.sprintf "LetDecl(%s%s = %s)" (if is_rec then "rec " else "") (stringify_pattern pattern) (stringify_expr rhs)
   | TypeDefintion td ->
     let type_cons = List.fold_left (fun acc x -> acc ^ "|" ^ (stringify_type_con x)) "" td.type_constructors in
       Printf.sprintf "TypeDefinition(%s = %s)" td.type_name type_cons
@@ -137,14 +135,14 @@ and stringify_expr expr = match expr with
   | LetBinding (is_rec, pat, l, r) -> 
     let rec_str = if is_rec then "rec " else "" in 
     let in_string = (match r with None -> "" | Some e -> " in " ^ stringify_expr e) in  
-      Printf.sprintf "Let(%s%s = %s%s)" rec_str pat (stringify_expr l) in_string
+      Printf.sprintf "Let(%s%s = %s%s)" rec_str (stringify_pattern pat) (stringify_expr l) in_string
   | IfExpr i -> 
       let else_str = match i.else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
       Printf.sprintf "If(%s then %s%s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr) else_str
   | Function f -> 
-      Printf.sprintf "Fun(%s -> %s)" f.param (stringify_expr f.expr)
-  | PatternMatch pm -> 
-      Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr pm.match_expr) (stringify_match_clauses pm.clauses)
+      Printf.sprintf "Fun(%s -> %s)" (stringify_pattern f.param) (stringify_expr f.expr)
+  | PatternMatch (expr, cases) -> 
+      Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
   | FnApp fa -> 
       Printf.sprintf "FnApp(fn = %s, arg = %s)" (stringify_expr fa.fn) (stringify_expr fa.arg)
   | None -> "None"
@@ -162,14 +160,13 @@ and stringify_pattern pat = match pat with
   | EmptyBrackets -> "[]"
   | EmptyParens -> "()"
   | Wildcard -> "_"
-  | Cons (l, r) -> Printf.sprintf "(%s :: %s)" l r
 
 
-and stringify_match_clause clause = 
-  Printf.sprintf "| %s -> %s" (stringify_pattern clause.pattern) (stringify_expr clause.cmp_to)
+and stringify_match_case case = 
+  Printf.sprintf "| %s -> %s" (stringify_pattern case.lhs) (stringify_expr case.rhs)
 
-and stringify_match_clauses clauses = 
-  List.fold_left (fun acc clause -> acc ^ (stringify_match_clause clause)) "" clauses
+and stringify_match_cases cases = 
+  List.fold_left (fun acc case -> acc ^ (stringify_match_case case)) "" cases
 
 let stringify_program module_items = 
   List.fold_left (fun acc x -> acc ^ (stringify_module_item x) ^ "\n") "" module_items

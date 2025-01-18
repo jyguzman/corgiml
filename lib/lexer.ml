@@ -130,7 +130,8 @@ let tokenize_op lexer c =
   let next = peek lexer 1 in 
   let name, op, lexeme = match c with
 
-    | '(' -> ("lparen", LParen, "(") | ')' -> ("rparen", RParen, ")") | ';' -> ("semicolon", Semicolon, ";")
+    | '(' -> if next = ')' then ("empty_parens", Special EmptyParens, "()") else ("lparen", LParen, "(") 
+    | ')' -> ("rparen", RParen, ")") | ';' -> ("semicolon", Semicolon, ";")
     | '[' -> if next = ']' then ("brackets", Special Brackets, "[]") else ("lbracket", LBracket, "]")
     | ':' -> if next = ':' then ("cons", Special Cons, "::") else ("colon", Colon, ":")
     | '*' -> if next = '.' then ("star", FloatArithOp StarDot, "*.") else ("star", IntArithOp Star, "*")

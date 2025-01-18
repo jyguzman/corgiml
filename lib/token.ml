@@ -41,6 +41,7 @@ type literal =
 type special = 
   | Arrow | Brackets 
   | Wildcard 
+  | EmptyParens
   | PttrnSeperator
   | Cons
 
