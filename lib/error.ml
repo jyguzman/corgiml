@@ -1,5 +1,5 @@
 type err = 
-  | Type_mismatch of Ast.expr * string
+  | Type_mismatch of Ast.expression * string
 
 type error = {
   source: string;
