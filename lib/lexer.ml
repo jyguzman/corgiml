@@ -32,12 +32,14 @@ type lexer = {
   current: string;
   line: int;
   col: int;
+  pos: int;
   tokens: token list;
 }
 
 module Tokenizer = struct
   exception Invalid_token of string
   exception Unterminated_string of string
+
   let raise_invalid_token lexeme line col = 
     let message = "Invalid token '" ^ lexeme ^ "' at line " ^ (string_of_int line) ^ ", col " ^ (string_of_int @@ col+1) in
     let exc = Invalid_token message in raise exc
@@ -46,8 +48,14 @@ module Tokenizer = struct
     let message = "Unterminated string '" ^ lexeme ^ "' starting at line " ^ (string_of_int line) ^ ", col " ^ (string_of_int @@ col+1) in
     let exc = Unterminated_string message in raise exc
 
-  let create source = {source = source; current = source; line = 1; col = 0; tokens = []}
-  let make source current line col tokens = {source = source; current = current; line = line; col = col; tokens = tokens}
+  let create source = {source = source; current = source; line = 0; col = 0; pos = 0; tokens = []}
+  let make source current line col pos tokens = {
+    source = source; 
+    current = current; 
+    line = line; 
+    col = col; 
+    pos = pos; 
+    tokens = tokens}
 end
 
 let peek lexer n = 
@@ -58,7 +66,7 @@ let peek lexer n =
 let next lexer = peek lexer 1
 
 let tokenize_string lexer quote = 
-  let rec tokenize_string lexer acc =
+  let rec tokenize_string_aux lexer acc =
     if String.length lexer.current = 0 then Tokenizer.raise_unterminated_str acc lexer.line lexer.col
     else
       let c = String.get lexer.current 0 in
@@ -67,14 +75,14 @@ let tokenize_string lexer quote =
       let rest = cut_first_n lexer.current 1 in            
       if (c = '"' && quote = '"') || (c = '\'' && quote == '\'') then 
         let lexer = {lexer with current = cut_first_n lexer.current 1} in (acc, lexer)
-      else 
-        tokenize_string {lexer with current = rest; col = lexer.col + 1} acc_new
+      else
+        tokenize_string_aux {lexer with current = rest; col = lexer.col + 1; pos = lexer.pos + 1} acc_new
   in
-    let str, updated_lexer = tokenize_string lexer "" in
+    let str, updated_lexer = tokenize_string_aux lexer "" in
     let token_type = Literal (String str) in
     let token = Token.make "string" token_type str lexer.line lexer.col in
     let new_tokens = token :: updated_lexer.tokens in
-    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col new_tokens 
+    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos new_tokens 
     
 
 let tokenize_number lexer = 
@@ -85,7 +93,7 @@ let tokenize_number lexer =
       let c_str = String.make 1 c in
       let acc_new = acc ^ c_str in  
       let rest = cut_first_n lexer.current 1 in 
-      let updated_lexer = tokenize_number {lexer with current = rest; col = lexer.col + 1} acc_new in   
+      let updated_lexer = tokenize_number {lexer with current = rest; col = lexer.col + 1; pos = lexer.pos + 1} acc_new in   
       match c with 
         | '0' .. '9' -> updated_lexer
         | '.' -> if String.contains acc '.' then (acc, lexer) else updated_lexer
@@ -100,7 +108,7 @@ let tokenize_number lexer =
     in
     let token = Token.make name token_type num_string lexer.line lexer.col in
     let new_tokens = token :: updated_lexer.tokens in
-    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col new_tokens 
+    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos new_tokens 
 
 let tokenize_ident lexer = 
   let rec tokenize_ident lexer acc =
@@ -110,7 +118,7 @@ let tokenize_ident lexer =
       let c_str = String.make 1 c in
       let rest = cut_first_n lexer.current 1 in
       let acc_new = acc ^ c_str in match c with 
-        | 'a' .. 'z' | 'A' .. 'Z' | '_' -> tokenize_ident {lexer with current = rest; col = lexer.col + 1} acc_new 
+        | 'a' .. 'z' | 'A' .. 'Z' | '_' -> tokenize_ident {lexer with current = rest; col = lexer.col + 1; pos = lexer.pos + 1} acc_new 
         | _ -> acc, lexer
   in
     let ident, updated_lexer = tokenize_ident lexer "" in
@@ -124,7 +132,7 @@ let tokenize_ident lexer =
     in
     let token = Token.make name token_type ident lexer.line lexer.col in
     let updated_tokens = token :: updated_lexer.tokens in
-    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_tokens
+    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos updated_tokens
 
 let tokenize_op lexer c = 
   let next = peek lexer 1 in 
@@ -159,8 +167,12 @@ let tokenize_op lexer c =
   let token = Token.make name op lexeme lexer.line lexer.col in
   let n = String.length token.lexeme in 
   let skip = cut_first_n lexer.current n in 
-  {lexer with col = lexer.col + n; current = skip; tokens = token :: lexer.tokens}
+  {lexer with col = lexer.col + n; pos = lexer.pos + n; current = skip; tokens = token :: lexer.tokens}
        
+
+let lines = Hashtbl.create 64
+let _ = Hashtbl.add lines 0 0
+
 let tokenize_source source = 
   let rec tokenize_source lexer = 
     if String.length lexer.current = 0 then 
@@ -178,12 +190,14 @@ let tokenize_source source =
         | '^' | '<' | '>' | '=' | '~' | '+' | '-' | '/' | '*' |'.' | '_'
         | ';' | ':' | ',' | '[' | ']' | '{' | '}' | '(' | ')' | '|' -> tokenize_op lexer c
 
-        | '\n' -> {lexer with line = lexer.line + 1; col = 0; current = skip}
+        | '\n' -> 
+          let _ =  Hashtbl.add lines (lexer.line + 1) (lexer.pos + 1) in 
+          {lexer with line = lexer.line + 1; col = 0; pos = lexer.pos + 1; current = skip}
 
-        | ' ' -> {lexer with col = lexer.col + 1; current = skip}
+        | ' ' -> {lexer with col = lexer.col + 1; pos = lexer.pos + 1; current = skip}
         
         | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col
   in 
     let new_lexer = Tokenizer.create source in
     let processed_lexer = tokenize_source new_lexer in
-    List.rev processed_lexer.tokens
+    List.rev processed_lexer.tokens, lines

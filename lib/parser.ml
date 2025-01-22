@@ -1,16 +1,10 @@
 open Token
-open Result 
-open Option
 
 type parse_error = 
   | Unexpected_eof of string
   | Unexpected_token of string
   | Invalid_rec_let_binding of string
   | Unsupported_type of string
-
-let (let+) o f = match o with 
-  Some v -> f v 
-| None -> None 
 
 let (let*) r f = match r with 
   Ok v -> f v 
@@ -74,6 +68,9 @@ type handler =
   | Led of (Ast.expr -> (Ast.expr, parse_error) result)
 
 
+let loc token = 
+  {Ast.col = token.col; line = token.line; length = String.length token.lexeme}
+
 module Parser (Stream : TOKEN_STREAM) = struct  
   let prec_table = Hashtbl.create 64
   let bp_table = Hashtbl.create 64
@@ -92,14 +89,15 @@ module Parser (Stream : TOKEN_STREAM) = struct
     with _ -> Error (Unexpected_token ("Unexpected token " ^ stringify_token token))
 
   let nud token = 
+    let loc = loc token in 
     match token.token_type with 
       Literal l -> (match l with 
-          Integer i -> Ok (Ast.Integer i)
-        | Decimal d -> Ok (Ast.Float d)
-        | String s -> Ok (Ast.String s)
+          Integer i -> Ok (Ast.Literal (Integer (i, loc)))
+        | Decimal d -> Ok (Ast.Literal (Float (d, loc)))
+        | String s -> Ok (Ast.Literal (String (s, loc)))
         | Ident i -> Ok (Ast.Ident i))
-    | Keywords True -> Ok (Ast.Bool true)
-    | Keywords False -> Ok (Ast.Bool false)
+    | Keywords True -> Ok (Ast.Literal (Bool (true, loc)))
+    | Keywords False -> Ok (Ast.Literal (Bool (false, loc)))
     | _ -> 
       try match Hashtbl.find prec_table token.lexeme with 
         Nud nud -> nud ()

@@ -41,7 +41,6 @@ let rec occurs_in t1 t2 =
       | Some tv2_parent ->  occurs_in t1 tv2_parent)
   | _ -> false
 
-
 let rec stringify_type typ = match typ with 
   TVar t -> 
     let inner = !(t.parent) in 

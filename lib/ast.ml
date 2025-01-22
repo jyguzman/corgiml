@@ -1,3 +1,14 @@
+type loc = {
+  line: int;
+  col: int;
+  length: int;
+}
+
+type corgi_string = {
+  bytes: bytes;
+  len: int
+}
+
 type pattern = 
   | ConstInteger of int 
   | ConstFloat of float 
@@ -9,11 +20,20 @@ type pattern =
   | EmptyParens
   | Wildcard
 
+
+type literal = 
+  | Integer of int * loc
+  | Float of float * loc
+  | String of string * loc
+  | Bool of bool * loc
+
 type expr = 
   | None
-  | Integer of int 
-  | Float of float 
-  | String of string 
+  (* | Integer of int * loc
+  | Float of float * loc *)
+  | Literal of literal
+  (* | String of string  *)
+  | CorgiString of corgi_string
   | Bool of bool
   | Ident of string 
   | BinOp of bin_op 
@@ -90,6 +110,21 @@ and fun_typ = {
   ret_type: typ
 } 
 
+
+let op = function  
+    IAdd (_, _) -> "+"
+  | IMultiply (_, _) -> "*" 
+  | ISubtract (_, _) -> "-"
+  | IDivide (_, _) -> "/"
+  | FAdd (_, _) -> "+."
+  | FMultiply (_, _) -> "*." 
+  | FSubtract (_, _) -> "-."
+  | FDivide (_, _) -> "/."
+  | Less (_, _) -> "<"
+  | Leq (_, _) -> "<="
+  | Greater (_, _) -> ">"
+  | Geq (_, _) -> ">="
+  
 let rec stringify_type typ = match typ with 
     TUnit -> "unit" | TInt -> "int" | TFloat -> "float" 
   | TString -> "string" | TBool -> "bool" | TNone -> "None"
@@ -113,10 +148,10 @@ and stringify_expr_list exprs =
   List.fold_left (fun acc expr -> acc ^ (stringify_expr expr) ^ ",") "" exprs 
 
 and stringify_expr expr = match expr with 
-    String s -> Printf.sprintf "\"%s\"" s
-  | Integer i -> string_of_int i 
-  | Float f -> string_of_float f
-  | Bool b -> string_of_bool b
+    Literal String (s, _) -> Printf.sprintf "\"%s\"" s
+  | Literal Integer (i, _) -> string_of_int i 
+  | Literal Float (f, _) -> string_of_float f
+  | Literal Bool (b, _) -> string_of_bool b
   | Ident i -> Printf.sprintf "Id(%s)" i 
   | BinOp b -> (match b with 
       IAdd (l, r) -> Printf.sprintf "IAdd(%s, %s)" (stringify_expr l) (stringify_expr r) 
