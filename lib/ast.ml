@@ -79,6 +79,8 @@ and bin_op =
   | Leq of expression * expression
   | Greater of expression * expression
   | Geq of expression * expression
+  | And of expression * expression
+  | Or of expression * expression
 
 and un_op = 
   | IPower of expression
@@ -114,7 +116,7 @@ and fun_typ = {
   ret_type: typ
 } 
 
-let op = function  
+let op_for = function  
     IAdd (_, _) -> "+"
   | IMultiply (_, _) -> "*" 
   | ISubtract (_, _) -> "-"
@@ -127,6 +129,8 @@ let op = function
   | Leq (_, _) -> "<="
   | Greater (_, _) -> ">"
   | Geq (_, _) -> ">="
+  | And (_, _) -> "&&"
+  | Or (_, _) -> "||"
   
 let rec stringify_type typ = match typ with 
     TUnit -> "unit" | TInt -> "int" | TFloat -> "float" 
@@ -168,7 +172,9 @@ and stringify_expr expr = match expr.expr_desc with
     | Less (l, r) -> Printf.sprintf "Less(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Leq (l, r) -> Printf.sprintf "Lew(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Greater (l, r) -> Printf.sprintf "Greater(%s, %s)" (stringify_expr l) (stringify_expr r)
-    | Geq (l, r) -> Printf.sprintf "Geq(%s, %s)" (stringify_expr l) (stringify_expr r))
+    | Geq (l, r) -> Printf.sprintf "Geq(%s, %s)" (stringify_expr l) (stringify_expr r)
+    | And (l, r) -> Printf.sprintf "And(%s, %s)" (stringify_expr l) (stringify_expr r)
+    | Or (l, r) -> Printf.sprintf "Or(%s, %s)" (stringify_expr l) (stringify_expr r))
   | Grouping g -> stringify_expr g
   | LetBinding (is_rec, pat, l, r) -> 
     let rec_str = if is_rec then "rec " else "" in 

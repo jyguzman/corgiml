@@ -160,7 +160,9 @@ let tokenize_op lexer c =
     | '=' -> if next = '=' then ("double_equal", ComparisonOp DoubleEqual, "==") else ("equal", ComparisonOp SingleEqual, "=")
     | '!' -> if next = '=' then ("not_equal", ComparisonOp BangEqual, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
 
-    | '|' -> ("clause_sep", Special PttrnSeperator, "|") | '_' -> ("wildcard", Special Wildcard, "_")
+    | '|' -> if next = '|' then ("or", Logical Or, "||") else ("clause_sep", Special PttrnSeperator, "|") 
+    | '&' -> if next = '&' then ("and", Logical And, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
+    | '_' -> ("wildcard", Special Wildcard, "_")
     
     | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col
   in 
@@ -188,7 +190,7 @@ let tokenize_source source =
         | '"' | '\'' -> tokenize_string {lexer with current = skip} c
 
         | '^' | '<' | '>' | '=' | '~' | '+' | '-' | '/' | '*' |'.' | '_'
-        | ';' | ':' | ',' | '[' | ']' | '{' | '}' | '(' | ')' | '|' -> tokenize_op lexer c
+        | ';' | ':' | ',' | '[' | ']' | '{' | '}' | '(' | ')' | '|'| '&' -> tokenize_op lexer c
 
         | '\n' -> 
           let _ =  Hashtbl.add lines (lexer.line + 1) (lexer.pos + 1) in 

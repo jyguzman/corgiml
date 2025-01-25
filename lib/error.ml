@@ -56,4 +56,3 @@ module ErrorReporter = struct
       Formatter.display_line line
 end
 
-

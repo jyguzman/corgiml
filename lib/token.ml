@@ -60,6 +60,7 @@ type token_type =
   | IntArithOp of int_arith
   | FloatArithOp of float_arith
   | ComparisonOp of comparison
+  | Logical of logical
   | Minus
   | Keywords of keywords
   | Special of special
