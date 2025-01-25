@@ -90,9 +90,7 @@ let check_literal = function
 
 let rec check_expr expr = match expr.Ast.expr_desc with 
   | Ast.Literal l -> Ok (check_literal l)
-  | Grouping g -> 
-    let _ = print_endline (Ast.stringify_expr g) in 
-    check_expr g
+  | Grouping g -> check_expr g
   | Ast.BinOp op -> 
     begin match op with 
       Ast.IAdd (l, r) | Ast.ISubtract (l, r) | Ast.IDivide (l, r) | Ast.IMultiply (l, r) ->
@@ -109,7 +107,7 @@ let rec check_expr expr = match expr.Ast.expr_desc with
           | App(TFloat, []), App(TFloat, []) -> Ok (App(TFloat, []))
           | _, _ -> Error (Type_mismatch (float_bin_op_error_str op l r)))
 
-      | Ast.Less (l, r) | Ast.Leq (l, r) | Ast.Greater (l, r) | Ast.Geq (l, r) ->
+      | Ast.Eq (l, r) | Ast.Neq (l, r) | Ast.Less (l, r) | Ast.Leq (l, r) | Ast.Greater (l, r) | Ast.Geq (l, r) ->
         let* l_type = check_expr l in 
         let* r_type = check_expr r in 
         (match l_type, r_type with  
@@ -128,6 +126,5 @@ let rec check_expr expr = match expr.Ast.expr_desc with
 
 let check_module_item mi = match mi with 
     Ast.Expr e -> check_expr e
-  | Ast.LetDeclaration (_, _, rhs) ->
-     check_expr rhs 
+  | Ast.LetDeclaration (_, _, _) -> Ok Nil 
   | _ -> Error (Unrecognized_operation "")

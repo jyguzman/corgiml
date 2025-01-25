@@ -1,6 +1,6 @@
 type ty = 
     | Nil 
-    | App of string * ty list 
+    | App of tycon * ty list 
     | Var of string 
     | Poly of string list * ty
 

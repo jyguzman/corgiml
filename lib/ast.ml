@@ -75,6 +75,8 @@ and bin_op =
   | FMultiply of expression * expression 
   | FSubtract of expression * expression 
   | FDivide of expression * expression
+  | Eq of expression * expression
+  | Neq of expression * expression
   | Less of expression * expression
   | Leq of expression * expression
   | Greater of expression * expression
@@ -125,6 +127,8 @@ let op_for = function
   | FMultiply (_, _) -> "*." 
   | FSubtract (_, _) -> "-."
   | FDivide (_, _) -> "/."
+  | Eq (_, _) -> "="
+  | Neq (_, _) -> "<>"
   | Less (_, _) -> "<"
   | Leq (_, _) -> "<="
   | Greater (_, _) -> ">"
@@ -169,6 +173,8 @@ and stringify_expr expr = match expr.expr_desc with
     | FMultiply (l, r) -> Printf.sprintf "FMultiply(%s, %s)" (stringify_expr l) (stringify_expr r) 
     | FDivide (l, r) -> Printf.sprintf "FDivide(%s, %s)" (stringify_expr l) (stringify_expr r) 
     | FSubtract (l, r) -> Printf.sprintf "FSubtract(%s, %s)" (stringify_expr l) (stringify_expr r)
+    | Eq (l, r) -> Printf.sprintf "Eq(%s, %s)" (stringify_expr l) (stringify_expr r)
+    | Neq (l, r) -> Printf.sprintf "Neq(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Less (l, r) -> Printf.sprintf "Less(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Leq (l, r) -> Printf.sprintf "Leq(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Greater (l, r) -> Printf.sprintf "Greater(%s, %s)" (stringify_expr l) (stringify_expr r)

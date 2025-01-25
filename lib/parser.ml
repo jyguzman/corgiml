@@ -333,11 +333,14 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let greater_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Greater (left, right))) loc))
   let geq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Geq (left, right))) loc))
 
+  let eq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Eq (left, right))) loc))
+  let neq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Neq (left, right))) loc))
+
   let set_handler lexeme handler = Hashtbl.add prec_table lexeme handler
 
   let _= List.iter2 (fun t h -> set_handler t h) ["+"; "*"; "-"; "/"] [iadd_handler; imult_handler; isub_handler; idiv_handler]
   let _= List.iter2 (fun t h -> set_handler t h) ["+."; "*."; "-."; "/."] [fadd_handler; fmult_handler; fsub_handler; fdiv_handler]
-  let _= List.iter2 (fun t h -> set_handler t h) ["<"; "<="; ">"; ">="] [less_handler; leq_handler; greater_handler; geq_handler]
+  let _= List.iter2 (fun t h -> set_handler t h) ["<"; "<="; ">"; ">="; "="; "<>"] [less_handler; leq_handler; greater_handler; geq_handler; eq_handler; neq_handler]
 
   let _ = set_handler "(" (Nud parse_group)
   let _ = set_handler "if" (Nud parse_if_expr)
