@@ -170,12 +170,12 @@ and stringify_expr expr = match expr.expr_desc with
     | FDivide (l, r) -> Printf.sprintf "FDivide(%s, %s)" (stringify_expr l) (stringify_expr r) 
     | FSubtract (l, r) -> Printf.sprintf "FSubtract(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Less (l, r) -> Printf.sprintf "Less(%s, %s)" (stringify_expr l) (stringify_expr r)
-    | Leq (l, r) -> Printf.sprintf "Lew(%s, %s)" (stringify_expr l) (stringify_expr r)
+    | Leq (l, r) -> Printf.sprintf "Leq(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Greater (l, r) -> Printf.sprintf "Greater(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Geq (l, r) -> Printf.sprintf "Geq(%s, %s)" (stringify_expr l) (stringify_expr r)
     | And (l, r) -> Printf.sprintf "And(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Or (l, r) -> Printf.sprintf "Or(%s, %s)" (stringify_expr l) (stringify_expr r))
-  | Grouping g -> stringify_expr g
+  | Grouping g -> Printf.sprintf "Grouping(%s)" (stringify_expr g)
   | LetBinding (is_rec, pat, l, r) -> 
     let rec_str = if is_rec then "rec " else "" in 
     let in_string = (match r with None -> "" | Some e -> " in " ^ stringify_expr e) in  

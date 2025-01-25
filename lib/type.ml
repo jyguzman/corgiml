@@ -1,8 +1,8 @@
 type ty = 
     | Nil 
-    | App of tycon * ty list 
-    | Var of tyvar 
-    | Poly of tyvar list * ty
+    | App of string * ty list 
+    | Var of string 
+    | Poly of string list * ty
 
 and tycon = 
     | TInt 
@@ -11,6 +11,13 @@ and tycon =
     | TBool
     | TUnit 
     | TArrow 
-    | TyFun of tyvar list * ty
+    | TyFun of string list * ty
 
-and tyvar = string
+let string_of_type = function
+  | TInt -> "int"
+  | TFloat -> "float"
+  | TString -> "string"
+  | TBool -> "bool"
+  | TUnit -> "unit"
+  | TArrow -> "arrow"
+  | TyFun (_, _) -> "fun"
