@@ -19,6 +19,7 @@ module type TOKEN_STREAM = sig
   val accept_any: string list -> bool
   val take: unit -> (token, parse_error) result
   val eof: unit -> bool
+  (* val loc: unit -> (Ast.location, parse_error) result *)
 end
 
 module TokenStream : TOKEN_STREAM = struct 
@@ -37,6 +38,10 @@ module TokenStream : TOKEN_STREAM = struct
   let take () = match !tokens with 
     [] -> Error (Unexpected_eof "unexpected end of file")  
   | x :: _ -> Ok x
+
+  (* let loc () =
+    let* curr = take () in 
+      Ok {Ast.col = curr.col; line = curr.line; length = String.length curr.lexeme} *)
 
   let expect (lexeme_or_name: string) = match !tokens with 
     [] -> Error (Unexpected_token "unexpected end of file")
@@ -59,13 +64,13 @@ module TokenStream : TOKEN_STREAM = struct
   | x :: _ -> List.mem x.lexeme strings || List.mem x.name strings 
 
   let eof () = match !tokens with 
-      | [] | [_] -> true 
-      | _ -> false
+    | [] | [_] -> true 
+    | _ -> false
 end
 
 type handler = 
   | Nud of (unit -> (Ast.expression, parse_error) result) 
-  | Led of (Ast.expression -> Ast.location -> (Ast.expression, parse_error) result)
+  | Led of (Ast.expression -> Ast.location -> (Ast.expression, parse_error) result) 
 
 
 let loc token = 
@@ -82,7 +87,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = List.iter (fun op -> set_bp op 20) ["+"; "+."; "-"; "-."]
   let _ = List.iter (fun op -> set_bp op 30) ["*"; "*."; "/"; "/."]
   let _ = List.iter (fun t -> set_bp t 0) ["fun"; "let"; "match"] 
-  let _ = List.iter (fun t -> set_bp t 0) [")"; "->"; "|"; "of"; "in"; "type"; "with"; "then"; "else"; "eof"]
+  let _ = List.iter (fun t -> set_bp t 0) [")"; "->"; "|"; "of"; "in"; "type"; "with"; "then"; "else"; ";;"; "eof"]
 
   let lbp token =   
     try Ok (Hashtbl.find bp_table token.lexeme)
@@ -145,11 +150,11 @@ module Parser (Stream : TOKEN_STREAM) = struct
         parse_expr_aux left
 
   let parse_group () = 
-    let* curr = Stream.take () in 
-    let loc = loc curr in 
+    let* lparen = Stream.take () in 
     let* inner = expr () in
-    let* _ = Stream.expect(")") in
-      Ok (expr_node (Ast.Grouping inner) loc)
+    let* rparen = Stream.expect(")") in
+    let length = rparen.col - lparen.col in 
+      Ok (expr_node (Ast.Grouping inner) {line = lparen.line; col = lparen.col; length = length})
 
   let parse_pattern () = 
     let* next = Stream.take () in 

@@ -71,6 +71,7 @@ type token_type =
   | RBracket
   | Colon 
   | Semicolon
+  | DoubleSemicolon
 
 let get_token_type token_type = 
   match token_type with 
@@ -82,7 +83,7 @@ type token = {
   token_type: token_type;
   lexeme: string;
   line: int;
-  col: int
+  col: int;
 }
 
 let stringify_token token = String.concat "" [
@@ -97,5 +98,6 @@ let rec stringify_tokens = function
   | x :: xs -> stringify_token x ^ ", " ^ stringify_tokens xs
 
 module Token = struct 
-  let make name token_type lexeme line col = {name = name; token_type = token_type; lexeme = lexeme; line = line; col = col}
+  let make name token_type lexeme line col = 
+    {name = name; token_type = token_type; lexeme = lexeme; line = line; col = col}
 end

@@ -1,7 +1,11 @@
 type location = {
+  (* start_line: int;
+  start_col: int;
+  end_line: int;
+  end_col: int; *)
   line: int;
   col: int;
-  length: int;
+  length: int
 }
 
 type corgi_string = {
@@ -182,10 +186,10 @@ and stringify_expr expr = match expr.expr_desc with
     | And (l, r) -> Printf.sprintf "And(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Or (l, r) -> Printf.sprintf "Or(%s, %s)" (stringify_expr l) (stringify_expr r))
   | Grouping g -> Printf.sprintf "Grouping(%s)" (stringify_expr g)
-  | LetBinding (is_rec, pat, l, r) -> 
+  | LetBinding (is_rec, pat, lhs, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
-    let in_string = (match r with None -> "" | Some e -> " in " ^ stringify_expr e) in  
-      Printf.sprintf "Let(%s%s = %s%s)" rec_str (stringify_pattern pat) (stringify_expr l) in_string
+    let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
+      Printf.sprintf "Let(%s%s = %s%s)" rec_str (stringify_pattern pat) (stringify_expr lhs) rhs_string
   | IfExpr i -> 
       let else_str = match i.else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr) else_str

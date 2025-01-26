@@ -1,58 +1,96 @@
 type err = 
   | Type_mismatch of Ast.expression * string
+  
+module Formatter(Src: sig val source: string list end) = struct 
+  let format_line line_num = 
+    Printf.sprintf "%d|\t%s" line_num (List.nth Src.source line_num)
 
-type error = {
-  source: string;
-  line: int;
-  col: int;
-  error: err
-}
+  let red str = "\027[31m" ^ str ^ "\027[0m"
 
-type context = {
-  source: string ref;
-  lines: (int, int) Hashtbl.t ref
-}
+  let format_expr expr = 
+    let line_num, start_pos, length = expr.Ast.loc.line, expr.loc.col, expr.loc.length in
+    let src_line = List.nth Src.source line_num in
+      String.sub src_line start_pos length
 
-let range first last = 
-  let rec range_aux acc = 
-    let curr = List.hd acc in 
-    if curr = last then 
-      acc 
-    else 
-      range_aux ((curr + 1) :: acc)
-  in 
-    List.rev (range_aux [first])
-
-module Formatter = struct 
-  let display_line line = 
-    let line_num, src_line = line in 
-      Printf.sprintf "%d  |\t%s" line_num src_line
+  let underline expr =
+    let line_num, start_pos, length = expr.Ast.loc.line, expr.loc.col, expr.loc.length in
+    let src_line = List.nth Src.source line_num in
+    let whitespace = String.make (start_pos) ' ' in 
+    let underline = whitespace ^ red (String.make length '^') in 
+      Printf.sprintf "%s\n%s" src_line underline 
 end 
+ 
 
-module ErrorReporter = struct
-  let ctxt = {
-    source = ref "";
-    lines = ref (Hashtbl.create 1)
-  }
+let get_type_str = function 
+  Ast.Literal Integer _ -> "int"
+| Ast.Literal Float _ -> "float"
+| Ast.Literal String _ -> "string"
+| Ast.Literal Bool _ -> "bool" 
+| _ -> ""
 
-  let init source lines = 
-    let _ = ctxt.source := source in
-    ctxt.lines := lines
+let bin_op_mismatch_template = format_of_string {|
+  "%s" expects two %ss, but it got the following: 
+      left: %s (type: %s)
+      right: %s (type: %s)
+|}
+
+let int_bin_op_error_str bin_op l r =  
+  let op = Ast.op_for bin_op in 
+  let word = match op with
+    "+" -> "add" | "*" -> "multiply" | "-" -> "subtract" | "/" -> "divide" | _ -> ""
+  in
+  let float_hint = Printf.sprintf "\n\nHint: To %s floats, use \"%s.\"" word op in
+  let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
+  (* let l_str, r_str = ., Ast.stringify_expr r in  *)
+  let template = Printf.sprintf bin_op_mismatch_template op "integer" l_str (get_type_str l.expr_desc) r_str (get_type_str r.expr_desc) in
+  let hint = match l.expr_desc, r.expr_desc with 
+    | Ast.Literal Float _, Ast.Literal Float _ -> float_hint
+    | Ast.Literal String _, Ast.Literal String _ -> 
+      if op = "+" then "\n\nHint: To concatenate strings, use '^'"  else ""
+    | Ast.Literal Float _, Ast.Literal Integer _ -> 
+      let expr_str = if String.contains r_str ' '  then Printf.sprintf "(%s)" r_str else r_str in
+      Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int (%s)\"" float_hint expr_str
+    | Ast.Literal Integer _, Ast.Literal Float _ -> 
+      let expr_str = if String.contains l_str ' '  then Printf.sprintf "(%s)" l_str else l_str in
+      Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
+    | _, _ -> ""
+  in 
+    template ^ hint
   
-  let src () = !(ctxt.source)
-
-  let lines () = !(ctxt.lines)
-
-  let get_src_line line_num = 
-    let start_pos = Hashtbl.find (lines ()) line_num in 
-    let last_pos = Hashtbl.find (lines ()) (line_num + 1) in 
-      line_num, String.sub (src ()) start_pos (last_pos - start_pos - 1)
-
-  let get_src_lines first last = 
-    List.rev (List.fold_left (fun lines line_num -> (line_num, get_src_line line_num) :: lines) [] (range first last))
+let float_bin_op_error_str bin_op l r =  
+  let op = Ast.op_for bin_op in
+  let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
+  let template = Printf.sprintf bin_op_mismatch_template op "float" l_str (get_type_str l.expr_desc) r_str (get_type_str r.expr_desc) in
+  let hint = match l.expr_desc, r.expr_desc with 
+    | Ast.Literal String _, Ast.Literal String _ -> 
+      if op = "+." then "\n\nHint: To concatenate strings, use '^'"  else ""
+    | Ast.Literal Float _, Ast.Literal Integer _ -> 
+      let expr_str = if String.contains r_str ' '  then Printf.sprintf "(%s)" r_str else r_str in
+      Printf.sprintf "\nHint: You can convert an int to a float with \"float_of_int (%s)\"" expr_str
+    | Ast.Literal Integer _, Ast.Literal Float _ -> 
+      let expr_str = if String.contains l_str ' '  then Printf.sprintf "(%s)" l_str else l_str in
+      Printf.sprintf "\nHint: You can convert an int to a float with \"float_of_int %s\"" expr_str
+    | _, _ -> ""
+  in 
+    template ^ hint
   
-  let display_line line_num = 
-    let line = get_src_line line_num in 
-      Formatter.display_line line
-end
+let compare_error_str bin_op l r =  
+  let op = Ast.op_for bin_op in
+  let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
+  let template = Printf.sprintf bin_op_mismatch_template op "boolean" l_str (get_type_str l.expr_desc) r_str (get_type_str r.expr_desc) in
+  let hint = match l.expr_desc, r.expr_desc with 
+    | Ast.Literal Float _, Ast.Literal Integer _ -> 
+      let expr_str = if String.contains r_str ' '  then Printf.sprintf "(%s)" r_str else r_str in
+      Printf.sprintf "\nHint: You can convert an int to a float with float_of_int (%s)" expr_str
+    | Ast.Literal Integer _, Ast.Literal Float _ -> 
+      let expr_str = if String.contains l_str ' '  then Printf.sprintf "(%s)" l_str else l_str in
+      Printf.sprintf "\nHint: You can convert an int to a float with float_of_int (%s)" expr_str
+    | _, _ -> ""
+  in 
+    template ^ hint
+  
+let logical_error_str bin_op l r =  
+  let op = Ast.op_for bin_op in
+  let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
+  Printf.sprintf bin_op_mismatch_template op "boolean" l_str (get_type_str l.expr_desc) r_str (get_type_str r.expr_desc)
 

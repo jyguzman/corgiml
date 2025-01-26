@@ -139,7 +139,8 @@ let tokenize_op lexer c =
   let name, op, lexeme = match c with
 
     | '(' -> if next = ')' then ("empty_parens", Special EmptyParens, "()") else ("lparen", LParen, "(") 
-    | ')' -> ("rparen", RParen, ")") | ';' -> ("semicolon", Semicolon, ";")
+    | ')' -> ("rparen", RParen, ")") 
+    | ';' -> if next = ';' then ("double_semicolon", DoubleSemicolon, ";;") else ("semicolon", Semicolon, ";")
     | '[' -> if next = ']' then ("brackets", Special Brackets, "[]") else ("lbracket", LBracket, "]")
     | ':' -> if next = ':' then ("cons", Special Cons, "::") else ("colon", Colon, ":")
     | '*' -> if next = '.' then ("star", FloatArithOp StarDot, "*.") else ("star", IntArithOp Star, "*")
@@ -170,10 +171,6 @@ let tokenize_op lexer c =
   let n = String.length token.lexeme in 
   let skip = cut_first_n lexer.current n in 
   {lexer with col = lexer.col + n; pos = lexer.pos + n; current = skip; tokens = token :: lexer.tokens}
-       
-
-let lines = Hashtbl.create 64
-let _ = Hashtbl.add lines 0 0
 
 let tokenize_source source = 
   let rec tokenize_source lexer = 
@@ -193,7 +190,6 @@ let tokenize_source source =
         | ';' | ':' | ',' | '[' | ']' | '{' | '}' | '(' | ')' | '|'| '&' -> tokenize_op lexer c
 
         | '\n' -> 
-          let _ =  Hashtbl.add lines (lexer.line + 1) (lexer.pos + 1) in 
           {lexer with line = lexer.line + 1; col = 0; pos = lexer.pos + 1; current = skip}
 
         | ' ' -> {lexer with col = lexer.col + 1; pos = lexer.pos + 1; current = skip}
@@ -202,4 +198,4 @@ let tokenize_source source =
   in 
     let new_lexer = Tokenizer.create source in
     let processed_lexer = tokenize_source new_lexer in
-    List.rev processed_lexer.tokens, lines
+    List.rev processed_lexer.tokens

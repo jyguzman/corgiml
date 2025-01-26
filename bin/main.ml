@@ -15,7 +15,13 @@ let load_source_file file_name =
 
 let source = load_source_file "./test/test.cml" in
 
-let tokens, _ = Lexer.tokenize_source source in 
+let lines = String.split_on_char '\n' source in
+
+let _ = List.map (fun line -> String.trim line) lines in
+
+let tokens = Lexer.tokenize_source source in 
+
+(* let _ = print_endline (Error.Formatter.color_red "am i red?") in *)
 
 (* let _ = ErrorReporter.init source lines in 
 
