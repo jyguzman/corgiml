@@ -19,7 +19,6 @@ module type TOKEN_STREAM = sig
   val accept_any: string list -> bool
   val take: unit -> (token, parse_error) result
   val eof: unit -> bool
-  (* val loc: unit -> (Ast.location, parse_error) result *)
 end
 
 module TokenStream : TOKEN_STREAM = struct 
@@ -38,10 +37,6 @@ module TokenStream : TOKEN_STREAM = struct
   let take () = match !tokens with 
     [] -> Error (Unexpected_eof "unexpected end of file")  
   | x :: _ -> Ok x
-
-  (* let loc () =
-    let* curr = take () in 
-      Ok {Ast.col = curr.col; line = curr.line; length = String.length curr.lexeme} *)
 
   let expect (lexeme_or_name: string) = match !tokens with 
     [] -> Error (Unexpected_token "unexpected end of file")
@@ -190,7 +185,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* _ = Stream.expect ("->") in
     let* body = expr () in
     let* curr = Stream.take () in 
-    let location = {Ast.line = fun_token.line; Ast.col = fun_token.col; start_pos = fun_token.pos; end_pos = curr.pos - 1} in 
+    let location = Ast.{
+      line = fun_token.line; 
+      col = fun_token.col; 
+      start_pos = fun_token.pos; 
+      end_pos = curr.pos - 1} 
+    in 
       Ok (expr_node (Ast.Function (patterns, body)) location)
 
   let parse_let_binding () = 
@@ -209,7 +209,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       else 
         let* body = expr () in
         let* curr = Stream.take () in 
-        let location = {Ast.line = let_tok.line; Ast.col = let_tok.col; start_pos = let_tok.pos; end_pos = curr.pos - 1} in  
+        let location = Ast.{line = let_tok.line; Ast.col = let_tok.col; start_pos = let_tok.pos; end_pos = curr.pos - 1} in  
           Ok (expr_node (Ast.Function (List.tl idents, body)) location)
       in
       let* body = if Stream.accept ("in") then
@@ -218,7 +218,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
         Ok None 
       in 
       let* curr = Stream.take () in 
-      let location = {Ast.line = let_tok.line; Ast.col = let_tok.col; start_pos = let_tok.pos; end_pos = curr.pos - 1} in  
+      let location = {
+        Ast.line = let_tok.line; 
+        Ast.col = let_tok.col; 
+        start_pos = let_tok.pos; 
+        end_pos = curr.pos - 1} 
+      in  
         Ok (expr_node (Ast.LetBinding (is_rec, lhs, rhs, body)) location)
 
   let parse_if_expr () = 
@@ -231,20 +236,20 @@ module Parser (Stream : TOKEN_STREAM) = struct
     else 
       Ok None in  
     let* curr = Stream.take () in 
-    let location = {
-      Ast.line = if_tok.line; 
+    let location = Ast.{
+      line = if_tok.line; 
       col = if_tok.col; 
-      start_pos = curr.pos; 
+      start_pos = if_tok.pos; 
       end_pos = curr.pos + (String.length curr.lexeme) - 1
     } in
-    Ok (expr_node (Ast.IfExpr (then_cond, then_expr, else_expr)) location)
+      Ok (expr_node (Ast.IfExpr (then_cond, then_expr, else_expr)) location)
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
     let* _ = Stream.expect ("->") in 
     let* expr = expr () in 
-      Ok ({Ast.lhs = pattern; rhs = expr}) 
+      Ok (Ast.{lhs = pattern; rhs = expr}) 
 
   let parse_match_cases () = 
     let rec parse_match_cases_aux cases =
@@ -263,8 +268,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* _ = Stream.expect ("with") in
     let* cases = parse_match_cases () in 
     let* curr = Stream.take () in
-    let location = {
-      Ast.line = match_tok.line; 
+    let location = Ast.{
+      line = match_tok.line; 
       col = match_tok.col; 
       start_pos = match_tok.pos; 
       end_pos = curr.pos + (String.length curr.lexeme) - 1
@@ -336,10 +341,10 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
 
   let loc_of_bin_op left right = 
-    {Ast.line = left.Ast.loc.line; 
+    Ast.{line = left.loc.line; 
     col = left.loc.col; 
     start_pos = left.loc.start_pos; 
-    end_pos = right.Ast.loc.end_pos}
+    end_pos = right.loc.end_pos}
 
   let iadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (IAdd (left, right))) (loc_of_bin_op left right)))
   let imult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IMultiply (left, right))) (loc_of_bin_op left right)))
