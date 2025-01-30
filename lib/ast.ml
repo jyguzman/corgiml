@@ -38,12 +38,7 @@ and expression_desc =
   | BinOp of bin_op 
   | UnOp of un_op 
   | Grouping of expression
-
-  | IfExpr of {
-    then_cond: expression; 
-    then_expr: expression;
-    else_expr: expression option;
-  }
+  | IfExpr of expression * expression * expression option
   | LetBinding of bool * pattern * expression * expression option
   | Function of pattern list * expression
   | FnApp of expression * expression list
@@ -181,9 +176,9 @@ and stringify_expr expr = match expr.expr_desc with
     let rec_str = if is_rec then "rec " else "" in 
     let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
       Printf.sprintf "Let(%s%s = %s%s)" rec_str (stringify_pattern pat) (stringify_expr lhs) rhs_string
-  | IfExpr i -> 
-      let else_str = match i.else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
-        Printf.sprintf "If(%s then %s%s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr) else_str
+  | IfExpr (then_cond, then_expr, else_expr) -> 
+      let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
+        Printf.sprintf "If(%s then %s%s)" (stringify_expr then_cond) (stringify_expr then_expr) else_str
   | Function (params, body) -> 
       Printf.sprintf "Fun(%s -> %s)" (stringify_patterns params) (stringify_expr body)
   | Match (expr, cases) -> 

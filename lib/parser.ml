@@ -70,7 +70,7 @@ end
 
 type handler = 
   | Nud of (unit -> (Ast.expression, parse_error) result) 
-  | Led of (Ast.expression -> Ast.location -> (Ast.expression, parse_error) result) 
+  | Led of (Ast.expression -> (Ast.expression, parse_error) result) 
 
 
 let loc token = 
@@ -115,11 +115,10 @@ module Parser (Stream : TOKEN_STREAM) = struct
         Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
 
   let led left token = 
-    let loc = loc token in
     match Hashtbl.find_opt prec_table token.lexeme with 
       None -> Error (Unexpected_token ("unexpected token " ^ stringify_token token))
     | Some handler -> (match handler with 
-        Led led -> led left loc
+        Led led -> led left
       | Nud _ -> Error (Unexpected_token ("expected an infix operator or token but got " ^ stringify_token token)))
 
   let rec expr () = 
@@ -238,10 +237,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = curr.pos; 
       end_pos = curr.pos + (String.length curr.lexeme) - 1
     } in
-    Ok (expr_node (Ast.IfExpr {
-      then_cond = then_cond; 
-      then_expr = then_expr; 
-      else_expr = else_expr}) location)
+    Ok (expr_node (Ast.IfExpr (then_cond, then_expr, else_expr)) location)
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
@@ -339,24 +335,30 @@ module Parser (Stream : TOKEN_STREAM) = struct
       parse_program_aux []
 
 
-  let iadd_handler = Led (fun left _loc -> let* right = parse_expr 20 in let loc = {Ast.line = left.loc.line; col = left.loc.col; start_pos = left.loc.start_pos; end_pos = right.loc.end_pos} in Ok (expr_node (Ast.BinOp (IAdd (left, right))) loc))
-  let imult_handler = Led (fun left loc -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IMultiply (left, right))) loc))
-  let isub_handler = Led (fun left loc -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (ISubtract (left, right))) loc))
-  let idiv_handler = Led (fun left loc -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IDivide (left, right))) loc))
+  let loc_of_bin_op left right = 
+    {Ast.line = left.Ast.loc.line; 
+    col = left.loc.col; 
+    start_pos = left.loc.start_pos; 
+    end_pos = right.Ast.loc.end_pos}
 
-  let fadd_handler = Led (fun left loc -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (FAdd (left, right))) loc))
-  let fmult_handler = Led (fun left loc -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (FMultiply (left, right))) loc))
-  let fsub_handler = Led (fun left loc -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (FSubtract (left, right))) loc))
-  let fdiv_handler = Led (fun left loc -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (FDivide (left, right))) loc))
+  let iadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (IAdd (left, right))) (loc_of_bin_op left right)))
+  let imult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IMultiply (left, right))) (loc_of_bin_op left right)))
+  let isub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (ISubtract (left, right))) (loc_of_bin_op left right)))
+  let idiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IDivide (left, right))) (loc_of_bin_op left right)))
 
-  let less_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Less (left, right))) loc))
-  let leq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Leq (left, right))) loc))
+  let fadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (FAdd (left, right))) (loc_of_bin_op left right)))
+  let fmult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (FMultiply (left, right))) (loc_of_bin_op left right)))
+  let fsub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (FSubtract (left, right))) (loc_of_bin_op left right)))
+  let fdiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (FDivide (left, right))) (loc_of_bin_op left right)))
 
-  let greater_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Greater (left, right))) loc))
-  let geq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Geq (left, right))) loc))
+  let less_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Less (left, right))) (loc_of_bin_op left right)))
+  let leq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Leq (left, right))) (loc_of_bin_op left right)))
 
-  let eq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Eq (left, right))) loc))
-  let neq_handler = Led (fun left loc -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Neq (left, right))) loc))
+  let greater_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Greater (left, right))) (loc_of_bin_op left right)))
+  let geq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Geq (left, right))) (loc_of_bin_op left right)))
+
+  let eq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Eq (left, right))) (loc_of_bin_op left right)))
+  let neq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Neq (left, right))) (loc_of_bin_op left right)))
 
   let set_handler lexeme handler = Hashtbl.add prec_table lexeme handler
 

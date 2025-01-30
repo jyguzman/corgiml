@@ -3,12 +3,6 @@
 type err = 
   | Type_mismatch of string
 
-
-module type SOURCE = sig 
-  val source: string
-  val src_map: (int, int) Hashtbl.t 
-end
-
 let src_line source_info line_num = 
   List.nth source_info.Lexer.lines line_num
 
@@ -23,10 +17,8 @@ let expr_src_span source_info expr =
 
 let expr_src_lines source_info expr = 
   let span = expr_src_span source_info expr in
-  let start_line = expr.loc.line in 
   let lines = List.map (fun line -> String.trim line) (String.split_on_char '\n' span) in 
-  let end_line = start_line + (List.length lines - 1) in
-  let line_nums = List.init (end_line - start_line + 1) (fun x -> x + start_line) in 
+  let line_nums = List.init (List.length lines) (fun i -> i + expr.loc.line) in 
   List.map (fun line_num -> (line_num, List.nth source_info.lines line_num)) line_nums
 
 
@@ -39,7 +31,7 @@ module Formatter (S: sig val src: Lexer.source end) : FORMATTER = struct
 
   let display_expr expr = 
     let expr_lines = expr_src_lines S.src expr in
-    List.fold_left (fun acc (line_num, line) -> acc ^ Printf.sprintf "%d|   %s\n"  (line_num + 1) line) "" expr_lines
+    List.fold_left (fun acc (line_num, line) -> acc ^ Printf.sprintf "%d |   %s\n"  (line_num + 1) line) "" expr_lines
 
   (* let underline expr =
     let line_num, start_pos = expr.Ast.loc.line, expr.loc.col in 
@@ -65,7 +57,7 @@ let int_bin_op_error_str bin_op l r =
   let word = match op with
     "+" -> "add" | "*" -> "multiply" | "-" -> "subtract" | "/" -> "divide" | _ -> ""
   in
-  let float_hint = Printf.sprintf "\n\nHint: To %s floats, use \"%s.\"" word op in
+  let float_hint = Printf.sprintf "\n\nHint: To %s floats, use (%s.)" word op in
   let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
   let template = Printf.sprintf bin_op_mismatch_template op "integer" in
   let hint = match l.expr_desc, r.expr_desc with 
