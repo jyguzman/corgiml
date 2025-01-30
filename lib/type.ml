@@ -22,7 +22,7 @@ let bool = App(TBool, [])
 let string = App(TString, [])
 let unit = App(TUnit, [])
 
-let string_of_type = function
+let string_of_tycon = function
   | TInt -> "int"
   | TFloat -> "float"
   | TString -> "string"
@@ -30,3 +30,8 @@ let string_of_type = function
   | TUnit -> "unit"
   | TArrow -> "arrow"
   | TyFun (_, _) -> "fun"
+
+
+let string_of_type = function 
+    | App(tycon, _) -> string_of_tycon tycon
+    | _ -> ""      

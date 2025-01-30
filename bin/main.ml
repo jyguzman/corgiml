@@ -9,7 +9,7 @@ let load_source file_name =
       let line = input_line file in 
       load_source_aux file (acc ^ line ^ "\n")
     with _ ->
-      acc
+      String.sub acc 0 (String.length acc - 1)
   in 
   load_source_aux file "";;
 

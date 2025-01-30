@@ -121,17 +121,17 @@ let tokenize_number lexer =
     Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos new_tokens 
 
 let tokenize_ident lexer = 
-  let rec tokenize_ident lexer acc =
+  let rec tokenize_ident_aux lexer acc =
     if String.length lexer.current = 0 then acc, lexer
     else
       let c = String.get lexer.current 0 in
       let c_str = String.make 1 c in
       let rest = cut_first_n lexer.current 1 in
       let acc_new = acc ^ c_str in match c with 
-        | 'a' .. 'z' | 'A' .. 'Z' | '_' -> tokenize_ident {lexer with current = rest; col = lexer.col + 1; pos = lexer.pos + 1} acc_new 
+        | 'a' .. 'z' | 'A' .. 'Z' | '_' -> tokenize_ident_aux {lexer with current = rest; col = lexer.col + 1; pos = lexer.pos + 1} acc_new 
         | _ -> acc, lexer
   in
-    let ident, updated_lexer = tokenize_ident lexer "" in
+    let ident, updated_lexer = tokenize_ident_aux lexer "" in
     let keyword = Keywords.find_opt ident keywords in 
     let name, token_type = match keyword with 
       | Some keyword_type -> 
@@ -142,7 +142,7 @@ let tokenize_ident lexer =
     in
     let token = Token.make name token_type ident lexer.line lexer.col lexer.pos in
     let updated_tokens = token :: updated_lexer.tokens in
-    let _ = Hashtbl.add src_map updated_lexer.pos updated_lexer.line in
+    let _ = Hashtbl.add src_map lexer.pos lexer.line in
     Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos updated_tokens
 
 let tokenize_op lexer c = 
@@ -210,5 +210,5 @@ let tokenize_op lexer c =
   in 
     let new_lexer = Tokenizer.create source in
     let processed_lexer = tokenize_source new_lexer in
-    let src_lines = List.map (fun line -> String.trim line) (String.split_on_char '\n' source) in 
+    let src_lines = String.split_on_char '\n' source in 
     {raw = source; lines = src_lines; map = src_map; tokens = List.rev processed_lexer.tokens}

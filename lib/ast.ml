@@ -80,8 +80,8 @@ and un_op =
 
 type module_item =
   | Expr of expression
-  | LetDeclaration of bool * pattern * expression 
-  | TypeDefintion of type_definition 
+  | LetDeclaration of bool * pattern * expression * location
+  | TypeDefintion of type_definition * location
 
 and type_definition = {
   type_name: string;
@@ -91,22 +91,51 @@ and type_definition = {
 and typ_con = {
   type_def_name: string;
   con_name: string;
-  of_type: typ option
+  of_type: ty option
 }
 
-and typ = 
-  | TUnit
-  | TInt 
-  | TFloat 
-  | TString 
-  | TBool 
-  | TNone
-  | TFunction of fun_typ 
+and ty = 
+    | App of tycon * ty list 
+    | Var of string 
+    | Poly of string list * ty
+
+and tycon = 
+    | TInt 
+    | TFloat
+    | TString 
+    | TBool
+    | TUnit 
+    | TArrow 
+    | TyFun of string list * ty
+
+and ty_constraint = 
+    | TyEq of string * ty
+    | VarEq of string * string
+
+and value_binding = {
+  pat: pattern;
+  rhs: expression;
+  constraints: ty list option;
+  location: location;
+}
   
 and fun_typ = {
-  param_typs: typ list;
-  ret_type: typ
+  param_typs: ty list;
+  ret_type: ty
 } 
+
+let string_of_tycon = function
+  | TInt -> "int"
+  | TFloat -> "float"
+  | TString -> "string"
+  | TBool -> "bool"
+  | TUnit -> "unit"
+  | TArrow -> "arrow"
+  | TyFun (_, _) -> "fun"
+
+let string_of_type = function 
+  | App(tycon, _) -> Printf.sprintf "%s" (string_of_tycon tycon)
+  | _ -> ""   
 
 let op_for = function
     IAdd (_, _) -> "+"
@@ -126,24 +155,24 @@ let op_for = function
   | And (_, _) -> "&&"
   | Or (_, _) -> "||"
   
-let rec stringify_type typ = match typ with 
+(* let rec stringify_type typ = match typ with 
     TUnit -> "unit" | TInt -> "int" | TFloat -> "float" 
   | TString -> "string" | TBool -> "bool" | TNone -> "None"
   | TFunction tf -> 
     let param_str = List.fold_left (fun acc x -> acc ^ (stringify_type x) ^ "->") "(" tf.param_typs in 
-      Printf.sprintf "%s) -> %s" param_str (stringify_type tf.ret_type)
+      Printf.sprintf "%s) -> %s" param_str (stringify_type tf.ret_type) *)
 
 let rec stringify_module_item mi = match mi with 
     Expr e -> stringify_expr e 
-  | LetDeclaration (is_rec, pattern, rhs) -> 
+  | LetDeclaration (is_rec, pattern, rhs, _) -> 
       Printf.sprintf "LetDecl(%s%s = %s)" (if is_rec then "rec " else "") (stringify_pattern pattern) (stringify_expr rhs)
-  | TypeDefintion td ->
-    let type_cons = List.fold_left (fun acc x -> acc ^ "|" ^ (stringify_type_con x)) "" td.type_constructors in
-      Printf.sprintf "TypeDefinition(%s = %s)" td.type_name type_cons
+  | TypeDefintion (_, _) -> "need to stringify type"
+    (* let type_cons = List.fold_left (fun acc x -> acc ^ "|" ^ (stringify_type_con x)) "" td.type_constructors in
+      Printf.sprintf "TypeDefinition(%s = %s)" td.type_name type_cons *)
 
-and stringify_type_con v = 
+(* and stringify_type_con v = 
   let typ_string = match v.of_type with None -> "" | Some t -> " of " ^ stringify_type t in 
-    Printf.sprintf "%s%s" v.con_name typ_string  
+    Printf.sprintf "%s%s" v.con_name typ_string   *)
 
 and stringify_expr_list exprs = 
   List.fold_left (fun acc expr -> acc ^ (stringify_expr expr) ^ ",") "" exprs 
@@ -176,9 +205,9 @@ and stringify_expr expr = match expr.expr_desc with
     let rec_str = if is_rec then "rec " else "" in 
     let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
       Printf.sprintf "Let(%s%s = %s%s)" rec_str (stringify_pattern pat) (stringify_expr lhs) rhs_string
-  | IfExpr (then_cond, then_expr, else_expr) -> 
+  | IfExpr (condition, then_expr, else_expr) -> 
       let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
-        Printf.sprintf "If(%s then %s%s)" (stringify_expr then_cond) (stringify_expr then_expr) else_str
+        Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
   | Function (params, body) -> 
       Printf.sprintf "Fun(%s -> %s)" (stringify_patterns params) (stringify_expr body)
   | Match (expr, cases) -> 

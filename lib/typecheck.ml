@@ -1,4 +1,3 @@
-
 open Type
 
 let (let*) r f = match r with 
@@ -24,6 +23,22 @@ module TypeChecker (F: Error.FORMATTER) = struct
         match typ with 
           Env.VarBind b -> Ok b)
     | Grouping g -> check_expr env g
+    | Ast.IfExpr (condition, then_expr, else_expr) -> 
+      let* cond_type = check_expr env condition in 
+      begin match cond_type with 
+        | App(TBool, []) -> 
+            let* then_expr_type = check_expr env then_expr in 
+            (match else_expr with 
+              None -> Ok then_expr_type
+            | Some expr -> 
+              let* else_expr_type = check_expr env expr in 
+              if else_expr_type = then_expr_type then 
+                Ok else_expr_type 
+              else 
+                Error (Type_mismatch "if then and else must be same type"))
+        | _ -> 
+          Error (Type_mismatch (expr_str ^ "\n" ^ "if condition must be boolean"))
+      end
     | Ast.BinOp op -> 
       begin match op with 
         Ast.IAdd (l, r) | Ast.ISubtract (l, r) | Ast.IDivide (l, r) | Ast.IMultiply (l, r) ->
@@ -68,7 +83,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
   
   let check_module_item mi env = match mi with 
       Ast.Expr expr -> check_expr env expr
-    | Ast.LetDeclaration (_, pattern, rhs) -> 
+    | Ast.LetDeclaration (_, pattern, rhs, _) -> 
       let* ident = match pattern.pattern_desc with 
         Ast.ConstIdent i -> Ok i 
       | _ -> Error (Unrecognized_operation "Not an ident")
