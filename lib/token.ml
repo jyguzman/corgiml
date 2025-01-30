@@ -84,6 +84,7 @@ type token = {
   lexeme: string;
   line: int;
   col: int;
+  pos: int
 }
 
 let stringify_token token = String.concat "" [
@@ -98,6 +99,6 @@ let rec stringify_tokens = function
   | x :: xs -> stringify_token x ^ ", " ^ stringify_tokens xs
 
 module Token = struct 
-  let make name token_type lexeme line col = 
-    {name = name; token_type = token_type; lexeme = lexeme; line = line; col = col}
+  let make name token_type lexeme line col pos = 
+    {name = name; token_type = token_type; lexeme = lexeme; line = line; col = col; pos = pos} 
 end

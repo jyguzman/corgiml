@@ -1,5 +1,4 @@
 type ty = 
-    | Nil 
     | App of tycon * ty list 
     | Var of string 
     | Poly of string list * ty
@@ -12,6 +11,16 @@ and tycon =
     | TUnit 
     | TArrow 
     | TyFun of string list * ty
+
+type ty_constraint = 
+    | TyEq of string * ty
+    | VarEq of string * string
+
+let int = App(TInt, [])
+let float = App(TFloat, [])
+let bool = App(TBool, [])
+let string = App(TString, [])
+let unit = App(TUnit, [])
 
 let string_of_type = function
   | TInt -> "int"

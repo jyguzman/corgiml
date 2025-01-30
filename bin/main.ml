@@ -2,39 +2,31 @@ open Corgiml
 (* open Token
 open Error *)
 
-let load_source_file file_name = 
+let load_source file_name = 
   let file = open_in file_name in 
-  let rec load_source_file_aux file acc =
+  let rec load_source_aux file acc =
     try 
       let line = input_line file in 
-        load_source_file_aux file (acc ^ line ^ "\n")
+      load_source_aux file (acc ^ line ^ "\n")
     with _ ->
       acc
   in 
-    load_source_file_aux file "";;
+  load_source_aux file "";;
 
-let source = load_source_file "./test/test.cml" in
+let source = load_source "./test/test.cml";;
 
-let lines = String.split_on_char '\n' source in
+let source_info = Lexer.tokenize_source source;;
 
-let _ = List.map (fun line -> String.trim line) lines in
+module Formatter = Error.Formatter(struct let src = source_info end);;
 
-let tokens = Lexer.tokenize_source source in 
+module TypeChecker = Typecheck.TypeChecker(Formatter);;
 
-(* let _ = print_endline (Error.Formatter.color_red "am i red?") in *)
-
-(* let _ = ErrorReporter.init source lines in 
-
-let _ = print_endline (ErrorReporter.display_line 0) in 
-
-let _ = print_endline (stringify_tokens tokens) in *)
-
-let p = Parser.parse tokens in 
+let p = Parser.parse source_info.tokens in 
 
 match p with 
     Ok p -> 
       let _ = print_endline (Ast.stringify_program p) in
-      (match Typecheck.check_module_item (List.hd p) with 
+      (match TypeChecker.check_module_item (List.hd p) [] with 
         Ok (_) -> print_endline "good" 
       | Error e -> match e with 
           Typecheck.Type_mismatch e -> print_endline e

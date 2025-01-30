@@ -18,7 +18,7 @@ let keywords = Keywords.of_seq @@ List.to_seq [
 
   ("true", Keywords True); ("false", Keywords False);
 
-  ("begin", Keywords Begin); ("end", Keywords End);
+  ("begin", Keywords Begin); ("end", Keywords End); 
 
   ("of", Keywords Of); ("type", Keywords Type);
 
@@ -33,7 +33,14 @@ type lexer = {
   line: int;
   col: int;
   pos: int;
-  tokens: token list;
+  tokens: token list; 
+}
+
+type source = {
+  raw: string;
+  lines: string list;
+  map: (int, int) Hashtbl.t;
+  tokens: token list
 }
 
 module Tokenizer = struct
@@ -65,6 +72,8 @@ let peek lexer n =
 
 let next lexer = peek lexer 1
 
+let src_map = Hashtbl.create 128
+
 let tokenize_string lexer quote = 
   let rec tokenize_string_aux lexer acc =
     if String.length lexer.current = 0 then Tokenizer.raise_unterminated_str acc lexer.line lexer.col
@@ -80,7 +89,7 @@ let tokenize_string lexer quote =
   in
     let str, updated_lexer = tokenize_string_aux lexer "" in
     let token_type = Literal (String str) in
-    let token = Token.make "string" token_type str lexer.line lexer.col in
+    let token = Token.make "string" token_type str lexer.line lexer.col lexer.pos in
     let new_tokens = token :: updated_lexer.tokens in
     Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos new_tokens 
     
@@ -106,8 +115,9 @@ let tokenize_number lexer =
       else 
         "integer", Literal (Integer(int_of_string num_string))
     in
-    let token = Token.make name token_type num_string lexer.line lexer.col in
+    let token = Token.make name token_type num_string lexer.line lexer.col lexer.pos in
     let new_tokens = token :: updated_lexer.tokens in
+    let _ = Hashtbl.add src_map updated_lexer.pos updated_lexer.line in
     Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos new_tokens 
 
 let tokenize_ident lexer = 
@@ -130,8 +140,9 @@ let tokenize_ident lexer =
           | _ -> ident, keyword_type)
       | None -> "ident", Literal (Ident ident)
     in
-    let token = Token.make name token_type ident lexer.line lexer.col in
+    let token = Token.make name token_type ident lexer.line lexer.col lexer.pos in
     let updated_tokens = token :: updated_lexer.tokens in
+    let _ = Hashtbl.add src_map updated_lexer.pos updated_lexer.line in
     Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos updated_tokens
 
 let tokenize_op lexer c = 
@@ -167,15 +178,16 @@ let tokenize_op lexer c =
     
     | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col
   in 
-  let token = Token.make name op lexeme lexer.line lexer.col in
+  let token = Token.make name op lexeme lexer.line lexer.col lexer.pos in
   let n = String.length token.lexeme in 
   let skip = cut_first_n lexer.current n in 
+  let _ = Hashtbl.add src_map lexer.pos lexer.line in
   {lexer with col = lexer.col + n; pos = lexer.pos + n; current = skip; tokens = token :: lexer.tokens}
 
-let tokenize_source source = 
+ let tokenize_source source = 
   let rec tokenize_source lexer = 
     if String.length lexer.current = 0 then 
-      let eof = Token.make "eof" EOF "eof" lexer.line lexer.col in {lexer with tokens = eof :: lexer.tokens} 
+      let eof = Token.make "eof" EOF "eof" lexer.line lexer.col lexer.pos in {lexer with tokens = eof :: lexer.tokens} 
     else
       let c = peek lexer 0 in
       let skip = cut_first_n lexer.current 1 in 
@@ -198,4 +210,5 @@ let tokenize_source source =
   in 
     let new_lexer = Tokenizer.create source in
     let processed_lexer = tokenize_source new_lexer in
-    List.rev processed_lexer.tokens
+    let src_lines = List.map (fun line -> String.trim line) (String.split_on_char '\n' source) in 
+    {raw = source; lines = src_lines; map = src_map; tokens = List.rev processed_lexer.tokens}

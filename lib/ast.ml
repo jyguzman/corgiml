@@ -1,11 +1,8 @@
 type location = {
-  (* start_line: int;
-  start_col: int;
-  end_line: int;
-  end_col: int; *)
   line: int;
   col: int;
-  length: int
+  start_pos: int;
+  end_pos: int
 }
 
 type corgi_string = {
@@ -22,9 +19,9 @@ and pattern_desc =
   | ConstInteger of int 
   | ConstFloat of float 
   | ConstString of string 
+  | ConstIdent of string
   | True
   | False
-  | ConstIdent of string
   | EmptyBrackets 
   | EmptyParens
   | Wildcard
@@ -48,14 +45,8 @@ and expression_desc =
     else_expr: expression option;
   }
   | LetBinding of bool * pattern * expression * expression option
-  | Function of {
-    param: pattern; 
-    expr: expression;
-  }
-  | FnApp of {
-    fn: expression;
-    arg: expression;
-  }
+  | Function of pattern list * expression
+  | FnApp of expression * expression list
   | Match of expression * case list
 
 and literal = 
@@ -122,7 +113,7 @@ and fun_typ = {
   ret_type: typ
 } 
 
-let op_for = function  
+let op_for = function
     IAdd (_, _) -> "+"
   | IMultiply (_, _) -> "*" 
   | ISubtract (_, _) -> "-"
@@ -193,12 +184,12 @@ and stringify_expr expr = match expr.expr_desc with
   | IfExpr i -> 
       let else_str = match i.else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr i.then_cond) (stringify_expr i.then_expr) else_str
-  | Function f -> 
-      Printf.sprintf "Fun(%s -> %s)" (stringify_pattern f.param) (stringify_expr f.expr)
+  | Function (params, body) -> 
+      Printf.sprintf "Fun(%s -> %s)" (stringify_patterns params) (stringify_expr body)
   | Match (expr, cases) -> 
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
-  | FnApp fa -> 
-      Printf.sprintf "FnApp(fn = %s, arg = %s)" (stringify_expr fa.fn) (stringify_expr fa.arg)
+  | FnApp (fn, args) -> 
+      Printf.sprintf "FnApp(fn = %s, arg = %s)" (stringify_expr fn) (stringify_expr_list args)
   | None -> "None"
   | _ -> ""
 
@@ -214,6 +205,9 @@ and stringify_pattern pattern = match pattern.pattern_desc with
   | EmptyBrackets -> "[]"
   | EmptyParens -> "()"
   | Wildcard -> "_"
+
+and stringify_patterns patterns = 
+  List.fold_left (fun acc x -> acc ^ stringify_pattern x ^ " ") "" patterns  
 
 and stringify_match_case case = 
   Printf.sprintf "| %s -> %s" (stringify_pattern case.lhs) (stringify_expr case.rhs)

@@ -74,7 +74,8 @@ type handler =
 
 
 let loc token = 
-  {Ast.col = token.col; line = token.line; length = String.length token.lexeme}
+  let len = String.length token.lexeme in 
+  {Ast.col = token.col; line = token.line; start_pos = token.pos; end_pos = token.pos + len - 1}
 
 module Parser (Stream : TOKEN_STREAM) = struct  
   let prec_table = Hashtbl.create 64
@@ -127,7 +128,6 @@ module Parser (Stream : TOKEN_STREAM) = struct
   and parse_expr rbp =
     let rec parse_expr_aux left =
       let* curr = Stream.take () in
-      let loc = loc curr in 
       let* lbp = if Hashtbl.find_opt bp_table curr.lexeme <> None then 
         lbp curr
       else 
@@ -135,9 +135,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
       in if rbp >= lbp then 
         Ok left
       else
-        let* left = if lbp = 70 then 
-          let* arg = parse_expr 71 in 
-            Ok (expr_node (Ast.FnApp {fn = left; arg = arg}) loc)
+        let* left = if lbp = 70 then Ok left
+          (* let* arg = parse_expr 71 in 
+            Ok (expr_node (Ast.FnApp (left, arg) loc)) *)
         else 
           let _ = Stream.advance () in 
             led left curr 
@@ -149,12 +149,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* left = nud curr in
         parse_expr_aux left
 
-  let parse_group () = 
+  let parse_grouped () = 
     let* lparen = Stream.take () in 
     let* inner = expr () in
     let* rparen = Stream.expect(")") in
-    let length = rparen.col - lparen.col in 
-      Ok (expr_node (Ast.Grouping inner) {line = lparen.line; col = lparen.col; length = length})
+    let location = {Ast.line = lparen.line; col = lparen.col; start_pos = lparen.pos; end_pos = rparen.pos} in 
+      Ok (expr_node (Ast.Grouping inner) location)
 
   let parse_pattern () = 
     let* next = Stream.take () in 
@@ -181,21 +181,21 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
       parse_patterns_aux [] 
 
-  let make_fn_node params body loc = 
+  (* let make_fn_node params body loc = 
     let params = List.rev params in 
-      List.fold_left (fun fn param -> expr_node (Ast.Function {param = param; expr = fn}) loc) body params
+      List.fold_left (fun fn param -> expr_node (Ast.Function {param = param; expr = fn}) loc) body params *)
 
   let parse_function () =
-    let* curr = Stream.take () in 
-    let loc = loc curr in 
+    let* fun_token = Stream.take () in 
     let* patterns = parse_patterns () in 
     let* _ = Stream.expect ("->") in
     let* body = expr () in
-      Ok (make_fn_node patterns body loc)
+    let* curr = Stream.take () in 
+    let location = {Ast.line = fun_token.line; Ast.col = fun_token.col; start_pos = fun_token.pos; end_pos = curr.pos - 1} in 
+      Ok (expr_node (Ast.Function (patterns, body)) location)
 
   let parse_let_binding () = 
-    let* curr = Stream.take () in 
-    let loc = loc curr in
+    let* let_tok = Stream.take () in 
     let is_rec = Stream.accept ("rec") in 
     let* idents = parse_patterns () in
     let num_idents = List.length idents in 
@@ -208,19 +208,22 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* rhs = if num_idents = 1 then 
         expr () 
       else 
-        let* body = expr () in 
-          Ok (make_fn_node (List.tl idents) body loc)
+        let* body = expr () in
+        let* curr = Stream.take () in 
+        let location = {Ast.line = let_tok.line; Ast.col = let_tok.col; start_pos = let_tok.pos; end_pos = curr.pos - 1} in  
+          Ok (expr_node (Ast.Function (List.tl idents, body)) location)
       in
       let* body = if Stream.accept ("in") then
         let* expr = expr () in Ok (Some expr)
       else 
         Ok None 
       in 
-        Ok (expr_node (Ast.LetBinding (is_rec, lhs, rhs, body)) loc)
+      let* curr = Stream.take () in 
+      let location = {Ast.line = let_tok.line; Ast.col = let_tok.col; start_pos = let_tok.pos; end_pos = curr.pos - 1} in  
+        Ok (expr_node (Ast.LetBinding (is_rec, lhs, rhs, body)) location)
 
   let parse_if_expr () = 
-    let* curr = Stream.take () in 
-    let loc = loc curr in 
+    let* if_tok = Stream.take () in 
     let* then_cond = expr () in 
     let* _ = Stream.expect ("then") in 
     let* then_expr = expr () in 
@@ -228,10 +231,17 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* expr = expr () in Ok (Some expr)
     else 
       Ok None in  
+    let* curr = Stream.take () in 
+    let location = {
+      Ast.line = if_tok.line; 
+      col = if_tok.col; 
+      start_pos = curr.pos; 
+      end_pos = curr.pos + (String.length curr.lexeme) - 1
+    } in
     Ok (expr_node (Ast.IfExpr {
       then_cond = then_cond; 
       then_expr = then_expr; 
-      else_expr = else_expr}) loc)
+      else_expr = else_expr}) location)
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
@@ -252,12 +262,18 @@ module Parser (Stream : TOKEN_STREAM) = struct
       parse_match_cases_aux [case] 
 
   let parse_pattern_match () = 
-    let* curr = Stream.take () in 
-    let loc = loc curr in 
+    let* match_tok = Stream.take () in 
     let* match_expr = expr () in 
     let* _ = Stream.expect ("with") in
     let* cases = parse_match_cases () in 
-      Ok (expr_node (Ast.Match (match_expr, cases)) loc)
+    let* curr = Stream.take () in
+    let location = {
+      Ast.line = match_tok.line; 
+      col = match_tok.col; 
+      start_pos = match_tok.pos; 
+      end_pos = curr.pos + (String.length curr.lexeme) - 1
+    } in
+      Ok (expr_node (Ast.Match (match_expr, cases)) location)
 
   let parse_type_con_type token = 
     match token.lexeme with 
@@ -322,7 +338,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
       parse_program_aux []
 
-  let iadd_handler = Led (fun left loc -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (IAdd (left, right))) loc))
+
+  let iadd_handler = Led (fun left _loc -> let* right = parse_expr 20 in let loc = {Ast.line = left.loc.line; col = left.loc.col; start_pos = left.loc.start_pos; end_pos = right.loc.end_pos} in Ok (expr_node (Ast.BinOp (IAdd (left, right))) loc))
   let imult_handler = Led (fun left loc -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IMultiply (left, right))) loc))
   let isub_handler = Led (fun left loc -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (ISubtract (left, right))) loc))
   let idiv_handler = Led (fun left loc -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IDivide (left, right))) loc))
@@ -347,7 +364,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _= List.iter2 (fun t h -> set_handler t h) ["+."; "*."; "-."; "/."] [fadd_handler; fmult_handler; fsub_handler; fdiv_handler]
   let _= List.iter2 (fun t h -> set_handler t h) ["<"; "<="; ">"; ">="; "="; "<>"] [less_handler; leq_handler; greater_handler; geq_handler; eq_handler; neq_handler]
 
-  let _ = set_handler "(" (Nud parse_group)
+  let _ = set_handler "(" (Nud parse_grouped)
   let _ = set_handler "if" (Nud parse_if_expr)
   let _ = set_handler "let" (Nud parse_let_binding)
   let _ = set_handler "match" (Nud parse_pattern_match)
