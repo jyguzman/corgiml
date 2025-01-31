@@ -218,40 +218,25 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
     let* pos = Stream.pos () in
     let location = Ast.{line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
-      Ok Ast.{pat = lhs; rhs = rhs; constraints = None; location = location} 
+      Ok Ast.{pat = lhs; rhs = rhs; constraints = [None]; location = location}  
 
   let parse_let_binding () = 
     let let_tok = Stream.prev () in 
     let is_rec = Stream.accept ("rec") in 
-    let* idents = parse_patterns () in
-    let num_idents = List.length idents in 
-    if is_rec && num_idents < 2 then 
-      let* curr_token = Stream.take () in 
-      Error (Invalid_rec_let_binding ("'rec' expects at least two identifiers: function name then parameters at line " ^ string_of_int curr_token.line))
+    let* value_binding = parse_value_binding (loc let_tok) in
+    let* body = if Stream.accept ("in") then
+      let* expr = expr () in Ok (Some expr)
     else 
-      let lhs = List.hd idents in
-      let* _ = Stream.expect ("=") in 
-      let* rhs = if num_idents = 1 then 
-        expr () 
-      else 
-        let* body = expr () in
-        let* curr = Stream.take () in 
-        let location = Ast.{line = let_tok.line; col = let_tok.col; start_pos = let_tok.pos; end_pos = curr.pos} in  
-          Ok (expr_node (Ast.Function (List.tl idents, body)) location)
-      in
-      let* body = if Stream.accept ("in") then
-        let* expr = expr () in Ok (Some expr)
-      else 
-        Ok None 
-      in 
-      let* curr = Stream.take () in 
-      let location = {
-        Ast.line = let_tok.line; 
-        Ast.col = let_tok.col; 
-        start_pos = let_tok.pos; 
-        end_pos = curr.pos} 
-      in  
-        Ok (expr_node (Ast.LetBinding (is_rec, lhs, rhs, body)) location)
+      Ok None 
+    in 
+    let* curr = Stream.take () in 
+    let location = {
+      Ast.line = let_tok.line; 
+      Ast.col = let_tok.col; 
+      start_pos = let_tok.pos; 
+      end_pos = curr.pos} 
+    in  
+      Ok (expr_node (Ast.LetBinding (is_rec, value_binding, body)) location)
 
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
@@ -357,9 +342,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
       Keywords Type -> parse_type_definition () 
     | _ -> 
       let* expr = expr () in match expr.expr_desc with 
-        Ast.LetBinding (is_rec, lhs, rhs, body) -> 
+        Ast.LetBinding (is_rec, value_binding, body) -> 
           (match body with 
-              None -> Ok (Ast.LetDeclaration (is_rec, lhs, rhs, expr.Ast.loc)) 
+              None -> Ok (Ast.LetDeclaration (is_rec, value_binding, expr.Ast.loc)) 
             | Some _ -> Ok (Ast.Expr expr))
         | _ -> Ok (Ast.Expr expr)
 

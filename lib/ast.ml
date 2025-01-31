@@ -39,7 +39,7 @@ and expression_desc =
   | UnOp of un_op 
   | Grouping of expression
   | IfExpr of expression * expression * expression option
-  | LetBinding of bool * pattern * expression * expression option
+  | LetBinding of bool * value_binding * expression option
   | Function of pattern list * expression
   | FnApp of expression * expression list
   | Match of expression * case list
@@ -78,9 +78,16 @@ and un_op =
   | IPower of expression
   | FPower of expression
 
-type module_item =
+and value_binding = {
+  pat: pattern;
+  rhs: expression;
+  constraints: ty option list; (* eventually need to parse type constraints *)
+  location: location;
+}
+
+and module_item =
   | Expr of expression
-  | LetDeclaration of bool * pattern * expression * location
+  | LetDeclaration of bool * value_binding * location
   | TypeDefintion of type_definition * location
 
 and type_definition = {
@@ -111,13 +118,6 @@ and tycon =
 and ty_constraint = 
     | TyEq of string * ty
     | VarEq of string * string
-
-and value_binding = {
-  pat: pattern;
-  rhs: expression;
-  constraints: ty list option;
-  location: location;
-}
   
 and fun_typ = {
   param_typs: ty list;
@@ -164,8 +164,8 @@ let op_for = function
 
 let rec stringify_module_item mi = match mi with 
     Expr e -> stringify_expr e 
-  | LetDeclaration (is_rec, pattern, rhs, _) -> 
-      Printf.sprintf "LetDecl(%s%s = %s)" (if is_rec then "rec " else "") (stringify_pattern pattern) (stringify_expr rhs)
+  | LetDeclaration (is_rec, value_binding, _) -> 
+      Printf.sprintf "LetDecl(%s %s)" (if is_rec then "rec " else "") (stringify_value_binding value_binding)
   | TypeDefintion (_, _) -> "need to stringify type"
     (* let type_cons = List.fold_left (fun acc x -> acc ^ "|" ^ (stringify_type_con x)) "" td.type_constructors in
       Printf.sprintf "TypeDefinition(%s = %s)" td.type_name type_cons *)
@@ -201,10 +201,10 @@ and stringify_expr expr = match expr.expr_desc with
     | And (l, r) -> Printf.sprintf "And(%s, %s)" (stringify_expr l) (stringify_expr r)
     | Or (l, r) -> Printf.sprintf "Or(%s, %s)" (stringify_expr l) (stringify_expr r))
   | Grouping g -> Printf.sprintf "Grouping(%s)" (stringify_expr g)
-  | LetBinding (is_rec, pat, lhs, rhs) -> 
+  | LetBinding (is_rec, value_binding, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
     let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
-      Printf.sprintf "Let(%s%s = %s%s)" rec_str (stringify_pattern pat) (stringify_expr lhs) rhs_string
+      Printf.sprintf "Let(%s %s %s)" rec_str (stringify_value_binding value_binding) rhs_string
   | IfExpr (condition, then_expr, else_expr) -> 
       let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
@@ -216,6 +216,10 @@ and stringify_expr expr = match expr.expr_desc with
       Printf.sprintf "FnApp(fn = %s, arg = %s)" (stringify_expr fn) (stringify_expr_list args)
   | None -> "None"
   | _ -> ""
+
+and stringify_value_binding vb = 
+  let lhs, rhs = vb.pat, vb.rhs in 
+  Printf.sprintf "ValBin(%s = %s)" (stringify_pattern lhs) (stringify_expr rhs)
 
 and stringify_params params = List.fold_left (fun acc x -> acc ^ x ^ " ") "" params
 

@@ -18,7 +18,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
     | Ast.Literal Bool _ -> Ok bool
     | Ast.Literal Ident i -> 
       (match Env.get env i with 
-        None -> Error (Unrecognized_operation ("coult not find" ^ i))
+        None -> Error (Unrecognized_operation (Printf.sprintf "%s Could not find a previous decalaration for the variable '%s'" expr_str i))
       | Some typ -> 
         match typ with 
           Env.VarBind b -> Ok b)
@@ -69,29 +69,40 @@ module TypeChecker (F: Error.FORMATTER) = struct
             | App(TBool, []), App(TBool, []) -> Ok (App(TBool, []))
             | _, _ ->  Error (Type_mismatch (Error.logical_error_str op l r)))
       end
-      | Ast.LetBinding (_, pattern, rhs, body) -> 
-        let* ident = match pattern.pattern_desc with 
-          Ast.ConstIdent i -> Ok i 
-        | _ -> Error (Unrecognized_operation "Not anl ident")
-        in
-        let* rhs_type = check_expr env rhs in 
-        let binding = Env.VarBind rhs_type in
-        let new_env = Env.add env ident binding in
+      | Ast.LetBinding (_, value_binding, body) -> 
+        let* rhs_type = check_expr env value_binding.rhs in
         let* body = match body with None -> Error (Unrecognized_operation "body empty") | Some b -> Ok b in
-          check_expr new_env body
+        begin match value_binding.pat.pattern_desc with 
+            Wildcard -> check_expr env body
+          | EmptyParens -> 
+            if rhs_type = unit then 
+              check_expr env body  
+            else 
+              Error (Type_mismatch "needs to be unit")
+          | Ast.ConstIdent i -> 
+            let binding = Env.VarBind rhs_type in
+            let new_env = Env.add env i binding in
+              check_expr new_env body
+          | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat)))
+        end
     | _ -> Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))
   
   let check_module_item mi env = match mi with 
       Ast.Expr expr -> check_expr env expr
-    | Ast.LetDeclaration (_, pattern, rhs, _) -> 
-      let* ident = match pattern.pattern_desc with 
-        Ast.ConstIdent i -> Ok i 
-      | _ -> Error (Unrecognized_operation "Not an ident")
-      in
-      let* rhs_type = check_expr env rhs in 
-      let binding = Env.VarBind rhs_type in
-      let _ = Env.add env ident binding in
-        Ok unit 
+    | Ast.LetDeclaration (_, value_binding, _) -> 
+      let* rhs_type = check_expr env value_binding.rhs in
+      (match value_binding.pat.pattern_desc with 
+      | Wildcard -> Ok unit
+      | EmptyParens -> 
+        if rhs_type = unit then 
+          Ok unit 
+        else 
+          Error (Type_mismatch "needs to be unit")
+      | Ast.ConstIdent i -> 
+        let binding = Env.VarBind rhs_type in
+        let _ = Env.add env i binding in
+          Ok unit
+      | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat))))
     | _ -> Error (Unrecognized_operation "")
 end 
 
