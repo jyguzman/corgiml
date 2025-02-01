@@ -139,6 +139,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       in if rbp >= lbp then 
         Ok left
       else
+        (* parse binary ops as function applications? *)
         let* left = if lbp = 70 then Ok left
           (* let* arg = parse_expr 71 in 
             Ok (expr_node (Ast.FnApp (left, arg) loc)) *)
@@ -358,37 +359,41 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
       parse_program_aux []
 
-
   let loc_of_bin_op left right = 
     Ast.{line = left.loc.line; 
     col = left.loc.col; 
     start_pos = left.loc.start_pos; 
     end_pos = right.loc.end_pos}
 
-  let iadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (IAdd (left, right))) (loc_of_bin_op left right)))
-  let imult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IMultiply (left, right))) (loc_of_bin_op left right)))
-  let isub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (ISubtract (left, right))) (loc_of_bin_op left right)))
-  let idiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (IDivide (left, right))) (loc_of_bin_op left right)))
+  let make_infix op arg = 
+    let op_expr = Ast.{
+      expr_desc = Ast.Literal (Ident (Printf.sprintf "(%s)" op.lexeme)); 
+      loc = loc op
+    } in
+    let location = Ast.{
+      line = op.line;
+      col = op.col;
+      start_pos = op.pos;
+      end_pos = arg.loc.end_pos
+    } in
+    Ast.{expr_desc = Ast.Apply(op_expr, [arg]); loc = location}
 
-  let fadd_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (FAdd (left, right))) (loc_of_bin_op left right)))
-  let fmult_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (FMultiply (left, right))) (loc_of_bin_op left right)))
-  let fsub_handler = Led (fun left -> let* right = parse_expr 20 in Ok (expr_node (Ast.BinOp (FSubtract (left, right))) (loc_of_bin_op left right)))
-  let fdiv_handler = Led (fun left -> let* right = parse_expr 30 in Ok (expr_node (Ast.BinOp (FDivide (left, right))) (loc_of_bin_op left right)))
+  let make_binary left = 
+    let op = Stream.prev () in 
+    let bp = Hashtbl.find bp_table op.lexeme in
+    let lhs = make_infix op left in
+    let* rhs = parse_expr bp in 
+    Ok Ast.{expr_desc = Ast.Apply(lhs, [rhs]); loc = loc_of_bin_op left rhs}
 
-  let less_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Less (left, right))) (loc_of_bin_op left right)))
-  let leq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Leq (left, right))) (loc_of_bin_op left right)))
-
-  let greater_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Greater (left, right))) (loc_of_bin_op left right)))
-  let geq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Geq (left, right))) (loc_of_bin_op left right)))
-
-  let eq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Eq (left, right))) (loc_of_bin_op left right)))
-  let neq_handler = Led (fun left -> let* right = parse_expr 10 in Ok (expr_node (Ast.BinOp (Neq (left, right))) (loc_of_bin_op left right)))
+  let bin_op left = 
+    let op = Stream.prev () in 
+    let bp = Hashtbl.find bp_table op.lexeme in
+    let* right = parse_expr bp in 
+    Ok (expr_node (Ast.BinOp (left, op.lexeme, right)) (loc_of_bin_op left right))
 
   let set_handler lexeme handler = Hashtbl.add prec_table lexeme handler
 
-  let _= List.iter2 (fun t h -> set_handler t h) ["+"; "*"; "-"; "/"] [iadd_handler; imult_handler; isub_handler; idiv_handler]
-  let _= List.iter2 (fun t h -> set_handler t h) ["+."; "*."; "-."; "/."] [fadd_handler; fmult_handler; fsub_handler; fdiv_handler]
-  let _= List.iter2 (fun t h -> set_handler t h) ["<"; "<="; ">"; ">="; "="; "<>"] [less_handler; leq_handler; greater_handler; geq_handler; eq_handler; neq_handler]
+  let _= List.iter (fun op -> Hashtbl.add prec_table op (Led bin_op)) ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
 
   let _ = set_handler "(" (Nud parse_grouped)
   let _ = set_handler "if" (Nud parse_if_expr)

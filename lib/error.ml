@@ -58,8 +58,7 @@ let get_type_str = function
 let bin_op_mismatch_template = format_of_string "The (%s) operator works only with %s values."
 
 
-let int_bin_op_error_str bin_op l r =  
-  let op = Ast.op_for bin_op in 
+let int_bin_op_error_str op l r =  
   let word = match op with
     "+" -> "add" | "*" -> "multiply" | "-" -> "subtract" | "/" -> "divide" | _ -> ""
   in
@@ -80,8 +79,7 @@ let int_bin_op_error_str bin_op l r =
   in 
     template ^ hint
   
-let float_bin_op_error_str bin_op l r =  
-  let op = Ast.op_for bin_op in
+let float_bin_op_error_str op l r =  
   let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
   let template = Printf.sprintf bin_op_mismatch_template op "float" in
   let hint = match l.expr_desc, r.expr_desc with 
@@ -97,8 +95,7 @@ let float_bin_op_error_str bin_op l r =
   in 
     template ^ hint
   
-let compare_error_str bin_op l r =  
-  let op = Ast.op_for bin_op in
+let compare_error_str op l r =  
   let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in 
   let template = Printf.sprintf "The (%s) operator works only with values of the same type." op in
   let hint = match l.expr_desc, r.expr_desc with 
@@ -112,8 +109,7 @@ let compare_error_str bin_op l r =
   in 
     template ^ hint
   
-let logical_error_str bin_op _l _r =  
-  let op = Ast.op_for bin_op in
+let logical_error_str op _l _r =  
   (* let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in  *)
   Printf.sprintf bin_op_mismatch_template op "boolean"
 

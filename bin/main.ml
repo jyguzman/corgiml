@@ -17,8 +17,6 @@ let source = load_source "./test/test.cml";;
 
 let source_info = Lexer.tokenize_source source;;
 
-let _ = print_endline (Json.string_of_json json);;
-
 module Formatter = Error.Formatter(struct let src = source_info end);;
 
 module TypeChecker = Typecheck.TypeChecker(Formatter);;

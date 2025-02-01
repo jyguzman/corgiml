@@ -30,7 +30,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
             let* then_expr_type = check_expr env then_expr in 
             (match else_expr with 
               None -> Ok then_expr_type
-            | Some expr -> 
+            | Some expr ->  
               let* else_expr_type = check_expr env expr in 
               if else_expr_type = then_expr_type then 
                 Ok else_expr_type 
@@ -39,36 +39,33 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | _ -> 
           Error (Type_mismatch (expr_str ^ "\n" ^ "if condition must be boolean"))
       end
-    | Ast.BinOp op -> 
-      begin match op with 
-        Ast.IAdd (l, r) | Ast.ISubtract (l, r) | Ast.IDivide (l, r) | Ast.IMultiply (l, r) ->
-          let* l_type = check_expr env l in 
-          let* r_type = check_expr env r in 
-          (match l_type, r_type with 
-            | App(TInt, []), App(TInt, []) -> Ok (App(TInt, []))
-            | _, _ -> Error (Type_mismatch (expr_str ^ Error.int_bin_op_error_str op l r)))
-  
-        | Ast.FAdd (l, r) | Ast.FSubtract (l, r) | Ast.FDivide (l, r) | Ast.FMultiply (l, r) ->
-          let* l_type = check_expr env l in 
-          let* r_type = check_expr env r in 
-          (match l_type, r_type with 
-            | App(TFloat, []), App(TFloat, []) -> Ok (App(TFloat, []))
-            | _, _ -> Error (Type_mismatch (Error.float_bin_op_error_str op l r))) 
-  
-        | Ast.Eq (l, r) | Ast.Neq (l, r) | Ast.Less (l, r) | Ast.Leq (l, r) | Ast.Greater (l, r) | Ast.Geq (l, r) ->
-          let* l_type = check_expr env l in 
-          let* r_type = check_expr env r in 
-          (match l_type, r_type with  
-            | App(TBool, []), _ | _, App(TBool, []) -> Error (Type_mismatch (Error.compare_error_str op l r))
-            | _, _ -> Ok (App(TBool, [])))
-  
-        | Ast.And (l, r) | Ast.Or (l, r) ->
-          let* l_type = check_expr env l in 
-          let* r_type = check_expr env r in 
-          (match l_type, r_type with  
-            | App(TBool, []), App(TBool, []) -> Ok (App(TBool, []))
-            | _, _ ->  Error (Type_mismatch (Error.logical_error_str op l r)))
-      end
+      | Ast.BinOp (l, op, r) -> 
+        let* l_type = check_expr env l in 
+        let* r_type = check_expr env r in 
+        begin match op with 
+          "+" | "-" | "*" | "/" ->
+            (match l_type, r_type with 
+              | App(TInt, []), App(TInt, []) -> Ok (App(TInt, []))
+              | _, _ -> Error (Type_mismatch (expr_str ^ Error.int_bin_op_error_str op l r)))
+    
+          | "+." | "-." | "*." | "/." ->
+            (match l_type, r_type with 
+              | App(TFloat, []), App(TFloat, []) -> Ok (App(TFloat, []))
+              | _, _ -> Error (Type_mismatch (Error.float_bin_op_error_str op l r))) 
+    
+          | "<" | "<=" | "=" | ">" | ">=" | "<>" ->
+            (match l_type, r_type with  
+              | App(TBool, []), _ | _, App(TBool, []) -> Error (Type_mismatch (Error.compare_error_str op l r))
+              | _, _ -> Ok (App(TBool, [])))
+    
+          | "&&" | "||" ->
+            (match l_type, r_type with  
+              | App(TBool, []), App(TBool, []) -> Ok (App(TBool, []))
+              | _, _ ->  Error (Type_mismatch (Error.logical_error_str op l r)))
+              
+          | _ -> 
+            Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
+        end
       | Ast.LetBinding (_, value_binding, body) -> 
         let* rhs_type = check_expr env value_binding.rhs in
         let* body = match body with None -> Error (Unrecognized_operation "body empty") | Some b -> Ok b in
