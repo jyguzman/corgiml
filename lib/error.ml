@@ -1,4 +1,4 @@
-(* open Type *)
+open Ast
 
 type err = 
   | Type_mismatch of string
@@ -10,10 +10,10 @@ let src_line_from_pos source_info token_start_pos =
   Hashtbl.find source_info.Lexer.map token_start_pos
 
 let expr_src_len expr = 
-  expr.Ast.loc.end_pos - expr.loc.start_pos
+  expr.loc.end_pos - expr.loc.start_pos
 
 let expr_src_span source_info expr = 
-  String.sub source_info.Lexer.raw expr.Ast.loc.start_pos (expr_src_len expr)
+  String.sub source_info.Lexer.raw expr.loc.start_pos (expr_src_len expr)
 
 let expr_src_lines source_info expr = 
   let span = expr_src_span source_info expr in
@@ -29,7 +29,7 @@ let expr_src_lines source_info expr =
 
 
 module type FORMATTER = sig 
-  val display_expr: Ast.expression -> string
+  val display_expr: expression -> string
 end
 
 module Formatter (S: sig val src: Lexer.source end) : FORMATTER = struct 
@@ -47,18 +47,75 @@ module Formatter (S: sig val src: Lexer.source end) : FORMATTER = struct
     let underline = whitespace ^ red (String.make length '^') in 
       Printf.sprintf "%s\n%s" src_line underline  *)
 end 
- 
-let get_type_str = function 
-  Ast.Literal Integer _ -> "int"
-| Ast.Literal Float _ -> "float"
-| Ast.Literal String _ -> "string"
-| Ast.Literal Bool _ -> "bool" 
-| _ -> ""
 
 let bin_op_mismatch_template = format_of_string "The (%s) operator works only with %s values."
 
+let bin_op_error_str op l_type r_type =  
+  match op with 
+    "+" | "-" | "*" | "/" ->
+      (Printf.sprintf "The (%s) operator works only with %s values.\n" op "int") ^
+      begin match l_type, r_type with 
+        | App(TFloat, []), App(TFloat, []) -> 
+          Printf.sprintf "Both arguments are floats. To add floats, use (%s.)" op
+        | App(TString, []), App(TString, [])  -> 
+          if op = "+" then "\nBoth arguments are strings. To concatenate them, use '^'"  else ""
+        | App(TFloat, []), App(TInt, []) -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int (%s)\"" float_hint expr_str
+        | Ast.Integer _, Ast.Float _ -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
+        | _, _ -> ""
+      end
 
-let int_bin_op_error_str op l r =  
+    | "+" | "-" | "*" | "/" ->
+      begin match l_type, r_type with 
+        | App(TFloat, []), App(TFloat, []) -> float_hint
+        | App(TString, []), App(TString, [])  -> 
+          if op = "+" then "\n\nHint: To concatenate strings, use '^'"  else ""
+        | App(TFloat, []), App(TInt, []) -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int (%s)\"" float_hint expr_str
+        | Ast.Integer _, Ast. Float _ -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
+        | _, _ -> ""
+      end
+
+    | "<" | "<=" | "=" | ">" | ">=" | "<>" ->
+      begin match l_type, r_type with 
+        | App(TFloat, []), App(TFloat, []) -> float_hint
+        | App(TString, []), App(TString, [])  -> 
+          if op = "+" then "\n\nHint: To concatenate strings, use '^'"  else ""
+        | App(TFloat, []), App(TInt, []) -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int (%s)\"" float_hint expr_str
+        | Ast.Literal Integer _, Ast.Literal Float _ -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
+        | _, _ -> ""
+      end
+
+    | "&&" | "||" ->
+      begin match l_type, r_type with 
+        | App(TFloat, []), App(TFloat, []) -> float_hint
+        | App(TString, []), App(TString, [])  -> 
+          if op = "+" then "\n\nHint: To concatenate strings, use '^'"  else ""
+        | App(TFloat, []), App(TInt, []) -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int (%s)\"" float_hint expr_str
+        | Ast.Literal Integer _, Ast.Literal Float _ -> 
+          Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
+        | _, _ -> ""
+      end
+    | _ -> ""
+  (* let hint = match l_type, r_type with 
+    | App(TInt, []), App(TFloat, []) -> float_hint
+    | App(TString, []), App(TString, [])  -> 
+      if op = "+" then "\n\nHint: To concatenate strings, use '^'"  else ""
+    | App(TFloat, []), App(TInt, []) -> 
+      Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int (%s)\"" float_hint expr_str
+    | Ast.Literal Integer _, Ast.Literal Float _ -> 
+      let expr_str = if String.contains l_str ' '  then Printf.sprintf "(%s)" l_str else l_str in
+      Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
+    | _, _ -> ""
+  in 
+    template ^ hint *)
+
+(* let int_bin_op_error_str op l r =  
   let word = match op with
     "+" -> "add" | "*" -> "multiply" | "-" -> "subtract" | "/" -> "divide" | _ -> ""
   in
@@ -112,4 +169,4 @@ let compare_error_str op l r =
 let logical_error_str op _l _r =  
   (* let l_str, r_str = Ast.stringify_expr l, Ast.stringify_expr r in  *)
   Printf.sprintf bin_op_mismatch_template op "boolean"
-
+ *)

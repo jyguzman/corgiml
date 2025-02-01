@@ -106,12 +106,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let loc = loc token in 
     match token.token_type with 
       Literal l -> (match l with 
-          Integer i -> Ok (expr_node (Ast.Literal (Integer i)) loc)
-        | Decimal d -> Ok (expr_node (Ast.Literal (Float d)) loc)
-        | String s -> Ok (expr_node (Ast.Literal (String s)) loc)
-        | Ident i -> Ok (expr_node (Ast.Literal (Ident i)) loc))
-    | Keywords True -> Ok (expr_node (Ast.Literal (Bool true)) loc)
-    | Keywords False -> Ok (expr_node (Ast.Literal (Bool false)) loc)
+          Integer i -> Ok (expr_node (Ast.Integer i) loc)
+        | Decimal d -> Ok (expr_node (Ast.Float d) loc)
+        | String s -> let bytes = String.to_bytes s in Ok (expr_node (Ast.String (bytes, Bytes.length bytes)) loc) 
+        | Ident i -> Ok (expr_node (Ast.Ident i) loc))
+    | Keywords True -> Ok (expr_node (Ast.Bool true) loc)
+    | Keywords False -> Ok (expr_node (Ast.Bool false) loc)
     | _ ->  
       try match Hashtbl.find prec_table token.lexeme with 
         Nud nud -> nud ()
@@ -237,7 +237,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = let_tok.pos; 
       end_pos = curr.pos} 
     in  
-      Ok (expr_node (Ast.LetBinding (is_rec, value_binding, body)) location)
+      Ok (expr_node (Ast.Let (is_rec, value_binding, body)) location)
 
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
@@ -255,7 +255,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = if_tok.pos; 
       end_pos = pos
     } in
-      Ok (expr_node (Ast.IfExpr (condition, then_expr, else_expr)) location)
+      Ok (expr_node (Ast.If (condition, then_expr, else_expr)) location)
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
@@ -334,16 +334,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
     } in
       Ok (Ast.TypeDefintion ({type_name = ident.lexeme; type_constructors = variants}, location))
 
-  let parse_constructor_application () =
-    Ast.None
-
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
       Keywords Type -> parse_type_definition () 
     | _ -> 
       let* expr = expr () in match expr.expr_desc with 
-        Ast.LetBinding (is_rec, value_binding, body) -> 
+        Ast.Let (is_rec, value_binding, body) -> 
           (match body with 
               None -> Ok (Ast.LetDeclaration (is_rec, value_binding, expr.Ast.loc)) 
             | Some _ -> Ok (Ast.Expr expr))
@@ -367,7 +364,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   let make_infix op arg = 
     let op_expr = Ast.{
-      expr_desc = Ast.Literal (Ident (Printf.sprintf "(%s)" op.lexeme)); 
+      expr_desc = Ast.Ident (Printf.sprintf "(%s)" op.lexeme); 
       loc = loc op
     } in
     let location = Ast.{

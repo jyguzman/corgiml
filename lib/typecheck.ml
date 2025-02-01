@@ -12,11 +12,11 @@ module TypeChecker (F: Error.FORMATTER) = struct
   let rec check_expr env expr = 
     let expr_str = F.display_expr expr in
     match expr.Ast.expr_desc with 
-    | Ast.Literal Integer _ -> Ok int 
-    | Ast.Literal Float _ -> Ok float
-    | Ast.Literal String _ -> Ok string
-    | Ast.Literal Bool _ -> Ok bool
-    | Ast.Literal Ident i -> 
+    | Ast.Integer _ -> Ok int 
+    | Ast.Float _ -> Ok float
+    | Ast.String _ -> Ok string
+    | Ast.Bool _ -> Ok bool
+    | Ast.Ident i -> 
       (match Env.get env i with 
         None -> Error (Unrecognized_operation (Printf.sprintf "%s Could not find a previous decalaration for the variable '%s'" expr_str i))
       | Some typ -> 

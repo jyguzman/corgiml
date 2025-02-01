@@ -32,29 +32,24 @@ type expression = {
 }
 
 and expression_desc = 
-  | None
-  | Literal of literal
-  | CorgiString of corgi_string
+  | Integer of int
+  | Float of float
+  | Bool of bool
+  | String of bytes * int
+  | Ident of string 
   | BinOp of expression * string * expression
   | UnOp of string * expression 
   | Grouping of expression
-  | IfExpr of expression * expression * expression option
-  | LetBinding of bool * value_binding * expression option
+  | If of expression * expression * expression option
+  | Let of bool * value_binding * expression option
   | Function of pattern list * expression
   | Apply of expression * expression list
   | Match of expression * case list
 
-and literal = 
-  | Integer of int
-  | Float of float
-  | String of string
-  | Bool of bool
-  | Ident of string 
-
-  and case = {
-    lhs: pattern;
-    rhs: expression;
-  }
+and case = {
+  lhs: pattern;
+  rhs: expression;
+}
 
 and value_binding = {
   pat: pattern;
@@ -80,27 +75,22 @@ and typ_con = {
 }
 
 and ty = 
-    | App of tycon * ty list 
-    | Var of string 
-    | Poly of string list * ty
+  | App of tycon * ty list 
+  | Var of string 
+  | Poly of string list * ty
 
 and tycon = 
-    | TInt 
-    | TFloat
-    | TString 
-    | TBool
-    | TUnit 
-    | TArrow 
-    | TyFun of string list * ty
+  | TInt 
+  | TFloat
+  | TString 
+  | TBool
+  | TUnit 
+  | TArrow 
+  | TyFun of string list * ty
 
 and ty_constraint = 
-    | TyEq of string * ty
-    | VarEq of string * string
-  
-and fun_typ = {
-  param_typs: ty list;
-  ret_type: ty
-} 
+  | TyEq of string * ty
+  | VarEq of string * string
 
 let string_of_tycon = function
   | TInt -> "int"
@@ -138,18 +128,18 @@ and stringify_expr_list exprs =
   List.fold_left (fun acc expr -> acc ^ (stringify_expr expr) ^ ",") "" exprs 
 
 and stringify_expr expr = match expr.expr_desc with 
-    Literal String s -> Printf.sprintf "\"%s\"" s
-  | Literal Integer i -> string_of_int i 
-  | Literal Float f -> string_of_float f
-  | Literal Bool b -> string_of_bool b
-  | Literal Ident i -> Printf.sprintf "Id(%s)" i 
+    String (bytes, _) -> Printf.sprintf "\"%s\"" (Bytes.to_string bytes)
+  | Integer i -> string_of_int i 
+  | Float f -> string_of_float f
+  | Bool b -> string_of_bool b
+  | Ident i -> Printf.sprintf "Id(%s)" i 
   | BinOp (left, op, right) -> Printf.sprintf "BinOp(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
   | UnOp (op, expr) -> Printf.sprintf "UnOp(%s%s)" op (stringify_expr expr)
-  | LetBinding (is_rec, value_binding, rhs) -> 
+  | Let (is_rec, value_binding, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
     let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
       Printf.sprintf "Let(%s %s %s)" rec_str (stringify_value_binding value_binding) rhs_string
-  | IfExpr (condition, then_expr, else_expr) -> 
+  | If (condition, then_expr, else_expr) -> 
       let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
   | Function (params, body) -> 
@@ -158,8 +148,7 @@ and stringify_expr expr = match expr.expr_desc with
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
   | Apply (fn, args) -> 
       Printf.sprintf "App(%s, [%s])" (stringify_expr fn) (stringify_expr_list args)
-  | None -> "None"
-  | _ -> ""
+  | _ -> "INVALID EXPR"
 
 and stringify_value_binding vb = 
   let lhs, rhs = vb.pat, vb.rhs in 
