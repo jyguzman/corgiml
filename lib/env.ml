@@ -1,5 +1,7 @@
+open Ast
+
 type binding = 
-  | VarBind of Type.ty
+  | VarBind of Ast.ty
 
 type env = (string * binding) list
 
@@ -15,3 +17,5 @@ let rec get (env: env) name =
       else 
         get env_rest name
 
+let int_bin_op_type = App(TArrow, [int; App(TArrow, [int; int])])
+let (init_type_env: env) = List.fold_left (fun env op -> (op, VarBind int_bin_op_type) :: env) [] ["+"; "-"; "*"; "/"] 

@@ -5,11 +5,6 @@ type location = {
   end_pos: int
 }
 
-type corgi_string = {
-  bytes: bytes;
-  len: int
-}
-
 type pattern = {
   pattern_desc: pattern_desc;
   loc: location
@@ -42,7 +37,7 @@ and expression_desc =
   | Grouping of expression
   | If of expression * expression * expression option
   | Let of bool * value_binding * expression option
-  | Function of pattern list * expression
+  | Function of pattern list * expression * ty option
   | Apply of expression * expression list
   | Match of expression * case list
 
@@ -77,7 +72,7 @@ and typ_con = {
 and ty = 
   | App of tycon * ty list 
   | Var of string 
-  | Poly of string list * ty
+  (* | Poly of string list * ty *)
 
 and tycon = 
   | TInt 
@@ -92,6 +87,13 @@ and ty_constraint =
   | TyEq of string * ty
   | VarEq of string * string
 
+
+let int = App(TInt, [])
+let float = App(TFloat, [])
+let bool = App(TBool, [])
+let string = App(TString, [])
+let unit = App(TUnit, [])
+
 let string_of_tycon = function
   | TInt -> "int"
   | TFloat -> "float"
@@ -101,9 +103,18 @@ let string_of_tycon = function
   | TArrow -> "arrow"
   | TyFun (_, _) -> "fun"
 
-let string_of_type = function 
-  | App(tycon, _) -> Printf.sprintf "%s" (string_of_tycon tycon)
-  | _ -> ""   
+let rec string_of_type = function 
+  | App (tycon, types) -> 
+    begin match tycon, types with 
+        TInt, [] -> "int"
+      | TFloat, [] -> "float"
+      | TString, [] -> "string"
+      | TBool, [] -> "bool"
+      | TUnit, [] -> "unit"
+      | TArrow, [l; r] -> Printf.sprintf "%s -> %s" (string_of_type l) (string_of_type r)
+      | _, _ -> ""
+    end
+  | Var (name) -> Printf.sprintf "Var(%s)" name 
   
 (* let rec stringify_type typ = match typ with 
     TUnit -> "unit" | TInt -> "int" | TFloat -> "float" 
@@ -142,12 +153,12 @@ and stringify_expr expr = match expr.expr_desc with
   | If (condition, then_expr, else_expr) -> 
       let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
-  | Function (params, body) -> 
+  | Function (params, body, _) -> 
       Printf.sprintf "Fun(%s -> %s)" (stringify_patterns params) (stringify_expr body)
   | Match (expr, cases) -> 
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
   | Apply (fn, args) -> 
-      Printf.sprintf "App(%s, [%s])" (stringify_expr fn) (stringify_expr_list args)
+      Printf.sprintf "Apply(%s, [%s])" (stringify_expr fn) (stringify_expr_list args)
   | _ -> "INVALID EXPR"
 
 and stringify_value_binding vb = 

@@ -1,4 +1,5 @@
 open Token
+open Ast
 
 type parse_error = 
   | Unexpected_eof of string
@@ -25,7 +26,7 @@ end
 
 let loc token = 
   let len = String.length token.lexeme in 
-  {Ast.col = token.col; line = token.line; start_pos = token.pos; end_pos = token.pos + len - 1}
+  {col = token.col; line = token.line; start_pos = token.pos; end_pos = token.pos + len - 1}
 
 module TokenStream : TOKEN_STREAM = struct 
   let tokens = ref []
@@ -78,8 +79,8 @@ module TokenStream : TOKEN_STREAM = struct
 end
 
 type handler = 
-  | Nud of (unit -> (Ast.expression, parse_error) result) 
-  | Led of (Ast.expression -> (Ast.expression, parse_error) result) 
+  | Nud of (unit -> (expression, parse_error) result) 
+  | Led of (expression -> (expression, parse_error) result) 
 
 
 module Parser (Stream : TOKEN_STREAM) = struct  
@@ -100,18 +101,18 @@ module Parser (Stream : TOKEN_STREAM) = struct
     with _ -> Error (Unexpected_token ("Unexpected token " ^ stringify_token token))
 
   let expr_node expr_desc location = 
-    {Ast.expr_desc = expr_desc; loc = location}
+    {expr_desc = expr_desc; loc = location}
 
   let nud token = 
     let loc = loc token in 
     match token.token_type with 
       Literal l -> (match l with 
-          Integer i -> Ok (expr_node (Ast.Integer i) loc)
-        | Decimal d -> Ok (expr_node (Ast.Float d) loc)
-        | String s -> let bytes = String.to_bytes s in Ok (expr_node (Ast.String (bytes, Bytes.length bytes)) loc) 
-        | Ident i -> Ok (expr_node (Ast.Ident i) loc))
-    | Keywords True -> Ok (expr_node (Ast.Bool true) loc)
-    | Keywords False -> Ok (expr_node (Ast.Bool false) loc)
+          Integer i -> Ok (expr_node (Integer i) loc)
+        | Decimal d -> Ok (expr_node (Float d) loc)
+        | String s -> let bytes = String.to_bytes s in Ok (expr_node (String (bytes, Bytes.length bytes)) loc) 
+        | Ident i -> Ok (expr_node (Ident i) loc))
+    | Keywords True -> Ok (expr_node (Bool true) loc)
+    | Keywords False -> Ok (expr_node (Bool false) loc)
     | _ ->  
       try match Hashtbl.find prec_table token.lexeme with 
         Nud nud -> nud ()
@@ -142,7 +143,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
         (* parse binary ops as function applications? *)
         let* left = if lbp = 70 then Ok left
           (* let* arg = parse_expr 71 in 
-            Ok (expr_node (Ast.FnApp (left, arg) loc)) *)
+            Ok (expr_node (FnApp (left, arg) loc)) *)
         else 
           let _ = Stream.advance () in 
             led left curr 
@@ -158,21 +159,21 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let lparen = Stream.prev () in 
     let* inner = expr () in
     let* rparen = Stream.expect(")") in
-    let location = {Ast.line = lparen.line; col = lparen.col; start_pos = lparen.pos; end_pos = rparen.pos} in 
-      Ok (expr_node (Ast.Grouping inner) location)
+    let location = {line = lparen.line; col = lparen.col; start_pos = lparen.pos; end_pos = rparen.pos} in 
+      Ok (expr_node (Grouping inner) location)
 
   let parse_pattern () = 
     let* next = Stream.take () in 
     let loc = loc next in 
     match next.token_type with  
-      Literal Integer i -> Ok {Ast.pattern_desc = Ast.ConstInteger i; loc = loc}
-    | Literal Decimal d -> Ok {Ast.pattern_desc = Ast.ConstFloat d; loc = loc}
-    | Literal String s -> Ok {Ast.pattern_desc = Ast.ConstString s; loc = loc}
-    | Literal Ident i -> Ok {Ast.pattern_desc = Ast.ConstIdent i; loc = loc}
-    | Keywords True -> Ok {Ast.pattern_desc = Ast.True; loc = loc}
-    | Keywords False -> Ok {Ast.pattern_desc = Ast.False; loc = loc}
-    | Special EmptyParens -> Ok {Ast.pattern_desc = Ast.EmptyParens; loc = loc}
-    | Special Wildcard -> Ok {Ast.pattern_desc = Ast.Wildcard; loc = loc}
+      Literal Integer i -> Ok {pattern_desc = ConstInteger i; loc = loc}
+    | Literal Decimal d -> Ok {pattern_desc = ConstFloat d; loc = loc}
+    | Literal String s -> Ok {pattern_desc = ConstString s; loc = loc}
+    | Literal Ident i -> Ok {pattern_desc = ConstIdent i; loc = loc}
+    | Keywords True -> Ok {pattern_desc = True; loc = loc}
+    | Keywords False -> Ok {pattern_desc = False; loc = loc}
+    | Special EmptyParens -> Ok {pattern_desc = EmptyParens; loc = loc}
+    | Special Wildcard -> Ok {pattern_desc = Wildcard; loc = loc}
     | _ -> Error (Unexpected_token ("expected a pattern but got " ^ (stringify_token next)))
 
   let parse_patterns () = 
@@ -188,7 +189,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   (* let make_fn_node params body loc = 
     let params = List.rev params in 
-      List.fold_left (fun fn param -> expr_node (Ast.Function {param = param; expr = fn}) loc) body params *)
+      List.fold_left (fun fn param -> expr_node (Function {param = param; expr = fn}) loc) body params *)
 
   let parse_function () =
     let fun_token = Stream.prev () in
@@ -196,13 +197,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* _ = Stream.expect ("->") in
     let* body = expr () in
     let* pos = Stream.pos () in 
-    let location = Ast.{
+    let location = {
       line = fun_token.line; 
       col = fun_token.col; 
       start_pos = fun_token.pos; 
       end_pos = pos
     } in 
-      Ok (expr_node (Ast.Function (patterns, body)) location)
+      Ok (expr_node (Function (patterns, body, None)) location)
 
   let parse_value_binding let_loc =
     let* idents = parse_patterns () in
@@ -214,12 +215,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     else 
       let* body = expr () in
       let* curr = Stream.take () in 
-      let location = Ast.{line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = curr.pos} in  
-        Ok (expr_node (Ast.Function (List.tl idents, body)) location)
+      let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = curr.pos} in  
+        Ok (expr_node (Function (List.tl idents, body, None)) location)
     in 
     let* pos = Stream.pos () in
-    let location = Ast.{line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
-      Ok Ast.{pat = lhs; rhs = rhs; constraints = [None]; location = location}  
+    let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
+      Ok {pat = lhs; rhs = rhs; constraints = [None]; location = location}  
 
   let parse_let_binding () = 
     let let_tok = Stream.prev () in 
@@ -232,12 +233,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
     let* curr = Stream.take () in 
     let location = {
-      Ast.line = let_tok.line; 
-      Ast.col = let_tok.col; 
+      line = let_tok.line; 
+      col = let_tok.col; 
       start_pos = let_tok.pos; 
       end_pos = curr.pos} 
     in  
-      Ok (expr_node (Ast.Let (is_rec, value_binding, body)) location)
+      Ok (expr_node (Let (is_rec, value_binding, body)) location)
 
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
@@ -249,20 +250,20 @@ module Parser (Stream : TOKEN_STREAM) = struct
     else 
       Ok None in  
     let* pos = Stream.pos () in 
-    let location = Ast.{
+    let location = {
       line = if_tok.line; 
       col = if_tok.col; 
       start_pos = if_tok.pos; 
       end_pos = pos
     } in
-      Ok (expr_node (Ast.If (condition, then_expr, else_expr)) location)
+      Ok (expr_node (If (condition, then_expr, else_expr)) location)
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
     let* _ = Stream.expect ("->") in 
     let* expr = expr () in 
-      Ok (Ast.{lhs = pattern; rhs = expr}) 
+      Ok {lhs = pattern; rhs = expr}
 
   let parse_match_cases () = 
     let rec parse_match_cases_aux cases =
@@ -281,21 +282,21 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* _ = Stream.expect ("with") in
     let* cases = parse_match_cases () in 
     let* pos = Stream.pos () in
-    let location = Ast.{
+    let location = {
       line = match_tok.line; 
       col = match_tok.col; 
       start_pos = match_tok.pos; 
       end_pos = pos
     } in
-      Ok (expr_node (Ast.Match (match_expr, cases)) location)
+      Ok (expr_node (Match(match_expr, cases)) location)
 
   let parse_type_con_type token = 
     match token.lexeme with 
-        "int" -> Ok (Ast.App(Ast.TInt, [])) 
-      | "float" -> Ok (Ast.App(Ast.TInt, []))  
-      | "string" -> Ok (Ast.App(Ast.TInt, [])) 
-      | "bool" -> Ok (Ast.App(Ast.TInt, [])) 
-      | "unit" -> Ok (Ast.App(Ast.TUnit, [])) 
+        "int" -> Ok (App(TInt, [])) 
+      | "float" -> Ok (App(TInt, []))  
+      | "string" -> Ok (App(TInt, [])) 
+      | "bool" -> Ok (App(TInt, [])) 
+      | "unit" -> Ok (App(TUnit, [])) 
       | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
 
   let parse_type_constructor type_def_name = 
@@ -307,7 +308,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       else 
         Ok None
     in 
-      Ok ({Ast.type_def_name = type_def_name; Ast.con_name = ident.lexeme; of_type = typ})
+      Ok ({type_def_name = type_def_name; con_name = ident.lexeme; of_type = typ})
 
   let parse_type_constructors type_def_name = 
     let rec parse_type_constructors_aux typ_cons =
@@ -326,13 +327,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* _ = Stream.expect ("=") in 
     let* variants = parse_type_constructors ident.lexeme in
     let* pos = Stream.pos () in 
-    let location = Ast.{
+    let location = {
       line = type_tok.line;
       col = type_tok.col;
       start_pos = type_tok.pos;
       end_pos = pos
     } in
-      Ok (Ast.TypeDefintion ({type_name = ident.lexeme; type_constructors = variants}, location))
+      Ok (TypeDefintion ({type_name = ident.lexeme; type_constructors = variants}, location))
 
   let parse_module_item () =
     let* next = Stream.take () in 
@@ -340,11 +341,11 @@ module Parser (Stream : TOKEN_STREAM) = struct
       Keywords Type -> parse_type_definition () 
     | _ -> 
       let* expr = expr () in match expr.expr_desc with 
-        Ast.Let (is_rec, value_binding, body) -> 
+        Let (is_rec, value_binding, body) -> 
           (match body with 
-              None -> Ok (Ast.LetDeclaration (is_rec, value_binding, expr.Ast.loc)) 
-            | Some _ -> Ok (Ast.Expr expr))
-        | _ -> Ok (Ast.Expr expr)
+              None -> Ok (LetDeclaration (is_rec, value_binding, expr.loc)) 
+            | Some _ -> Ok (Expr expr))
+        | _ -> Ok (Expr expr)
 
   let parse_program () = 
     let rec parse_program_aux module_items = 
@@ -356,48 +357,33 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
       parse_program_aux []
 
-  let loc_of_bin_op left right = 
-    Ast.{line = left.loc.line; 
+  let loc_of_bin_op left right = {
+    line = left.loc.line; 
     col = left.loc.col; 
     start_pos = left.loc.start_pos; 
-    end_pos = right.loc.end_pos}
+    end_pos = right.loc.end_pos
+  }
 
-  let make_infix op arg = 
-    let op_expr = Ast.{
-      expr_desc = Ast.Ident (Printf.sprintf "(%s)" op.lexeme); 
-      loc = loc op
-    } in
-    let location = Ast.{
-      line = op.line;
-      col = op.col;
-      start_pos = op.pos;
-      end_pos = arg.loc.end_pos
-    } in
-    Ast.{expr_desc = Ast.Apply(op_expr, [arg]); loc = location}
-
-  let make_binary left = 
-    let op = Stream.prev () in 
+  let make_binary lhs = 
+    let op = Stream.prev () in
+    let op_expr = {expr_desc = Ident op.lexeme; loc = loc op} in 
     let bp = Hashtbl.find bp_table op.lexeme in
-    let lhs = make_infix op left in
     let* rhs = parse_expr bp in 
-    Ok Ast.{expr_desc = Ast.Apply(lhs, [rhs]); loc = loc_of_bin_op left rhs}
+    Ok (expr_node (Apply(op_expr, [lhs; rhs])) (loc_of_bin_op lhs rhs))
 
   let bin_op left = 
     let op = Stream.prev () in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* right = parse_expr bp in 
-    Ok (expr_node (Ast.BinOp (left, op.lexeme, right)) (loc_of_bin_op left right))
+    Ok (expr_node (BinOp (left, op.lexeme, right)) (loc_of_bin_op left right))
 
-  let set_handler lexeme handler = Hashtbl.add prec_table lexeme handler
-
-  let _= List.iter (fun op -> Hashtbl.add prec_table op (Led bin_op)) ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
-
-  let _ = set_handler "(" (Nud parse_grouped)
-  let _ = set_handler "if" (Nud parse_if_expr)
-  let _ = set_handler "let" (Nud parse_let_binding)
-  let _ = set_handler "match" (Nud parse_pattern_match)
-  let _ = set_handler "fun" (Nud parse_function)
-
+  let _ = List.iter (fun op -> Hashtbl.add prec_table op (Led make_binary)) ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
+  
+  let _ = 
+    List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
+      [("(", Nud parse_grouped); ("if", Nud parse_if_expr); 
+      ("let", Nud parse_let_binding); ("match", Nud parse_pattern_match); 
+      ("fun", Nud parse_function)]
 end
 
 module ParserImpl = Parser(TokenStream)

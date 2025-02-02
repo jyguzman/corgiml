@@ -48,11 +48,11 @@ module Formatter (S: sig val src: Lexer.source end) : FORMATTER = struct
       Printf.sprintf "%s\n%s" src_line underline  *)
 end 
 
-let bin_op_mismatch_template = format_of_string "The (%s) operator works only with %s values."
+(* let bin_op_mismatch_template = format_of_string "The (%s) operator works only with %s values." *)
 
-let bin_op_error_str op l_type r_type =  
+let bin_op_error_str op _l_type _r_type =  
   match op with 
-    "+" | "-" | "*" | "/" ->
+    (* "+" | "-" | "*" | "/" ->
       (Printf.sprintf "The (%s) operator works only with %s values.\n" op "int") ^
       begin match l_type, r_type with 
         | App(TFloat, []), App(TFloat, []) -> 
@@ -100,7 +100,7 @@ let bin_op_error_str op l_type r_type =
         | Ast.Literal Integer _, Ast.Literal Float _ -> 
           Printf.sprintf "%s\nHint: You can convert an int to a float with \"float_of_int %s\"" float_hint expr_str
         | _, _ -> ""
-      end
+      end *)
     | _ -> ""
   (* let hint = match l_type, r_type with 
     | App(TInt, []), App(TFloat, []) -> float_hint
