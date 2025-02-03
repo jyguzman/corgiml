@@ -26,12 +26,13 @@ let p = Parser.parse source_info.tokens in
 
 match p with 
     Ok p -> 
-      let _ = print_endline (Ast.stringify_program p) in
+      print_endline (Ast.stringify_program p)
+      (* let _ = print_endline (Ast.stringify_program p) in
       (match TypeChecker.check_module_item (List.hd p) Env.init_type_env with 
         Ok (_) -> print_endline "good" 
       | Error e -> match e with 
           Typecheck.Type_mismatch e -> print_endline e
-        | Typecheck.Unrecognized_operation e -> print_endline e)
+        | Typecheck.Unrecognized_operation e -> print_endline e) *)
   | Error e -> (match e with 
       Parser.Unexpected_eof s -> print_endline s
     | Parser.Unexpected_token s -> print_endline s

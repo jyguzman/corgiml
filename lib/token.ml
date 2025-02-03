@@ -31,6 +31,7 @@ type keywords =
   | Begin | End
   | Of
   | Type
+  | And
 
 type literal = 
   | Integer of int

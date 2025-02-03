@@ -11,6 +11,10 @@ let (let*) r f = match r with
   Ok v -> f v 
 | Error e -> Error e 
 
+module type PARSER = sig 
+  val parse: unit -> (token, parse_error) result
+end
+
 module type TOKEN_STREAM = sig 
   val init: token list -> unit
   val peek: unit -> token option 
@@ -136,14 +140,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* lbp = if Hashtbl.find_opt bp_table curr.lexeme <> None then 
         lbp curr
       else 
-        Ok 70 (* function application *)
+        Ok 70
       in if rbp >= lbp then 
         Ok left
       else
-        (* parse binary ops as function applications? *)
-        let* left = if lbp = 70 then Ok left
-          (* let* arg = parse_expr 71 in 
-            Ok (expr_node (FnApp (left, arg) loc)) *)
+        let* left = if lbp = 70 then 
+          parse_function_application left
         else 
           let _ = Stream.advance () in 
             led left curr 
@@ -154,6 +156,24 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let _ = Stream.advance () in
       let* left = nud curr in
         parse_expr_aux left
+
+  and parse_function_application left = 
+    let rec parse_fn_app_aux args =
+      let* curr = Stream.take () in
+      match Hashtbl.find_opt bp_table curr.lexeme with
+        Some _ -> Ok args 
+      | None -> let* arg = parse_expr 71 in 
+          parse_fn_app_aux (arg :: args)
+    in 
+    let* args = parse_fn_app_aux [] in 
+    let loc = {
+      line = left.loc.line;
+      col = left.loc.col;
+      start_pos = left.loc.start_pos;
+      end_pos = (List.hd args).loc.end_pos
+    } in
+    Ok (expr_node (Apply (left, List.rev args)) loc)
+
 
   let parse_grouped () = 
     let lparen = Stream.prev () in 
@@ -220,7 +240,25 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
     let* pos = Stream.pos () in
     let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
-      Ok {pat = lhs; rhs = rhs; constraints = [None]; location = location}  
+      Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location}   
+
+  (* let parse_value_binding let_loc =
+    let rec_parse_value_binding_aux = 
+    let* idents = parse_patterns () in
+    let num_idents = List.length idents in 
+    let lhs = List.hd idents in
+    let* _ = Stream.expect ("=") in 
+    let* rhs = if num_idents = 1 then 
+      expr () 
+    else 
+      let* body = expr () in
+      let* curr = Stream.take () in 
+      let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = curr.pos} in  
+        Ok (expr_node (Function (List.tl idents, body, None)) location)
+    in 
+    let* pos = Stream.pos () in
+    let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
+      Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location}    *)
 
   let parse_let_binding () = 
     let let_tok = Stream.prev () in 

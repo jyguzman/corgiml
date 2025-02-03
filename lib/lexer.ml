@@ -20,10 +20,10 @@ let keywords = Keywords.of_seq @@ List.to_seq [
 
   ("begin", Keywords Begin); ("end", Keywords End); 
 
-  ("of", Keywords Of); ("type", Keywords Type);
+  ("of", Keywords Of); ("type", Keywords Type); ("and", Keywords And);
 
-  ("int", Annotation TInt); ("float", Annotation TFloat); ("string", Annotation TString);
-  ("bool", Annotation TBool); ("None", Annotation TNone)
+  ("Int", Annotation TInt); ("Float", Annotation TFloat); ("String", Annotation TString);
+  ("Bool", Annotation TBool); ("Unit", Annotation TNone)
 
 ];;
 

@@ -49,7 +49,7 @@ and case = {
 and value_binding = {
   pat: pattern;
   rhs: expression;
-  constraints: ty option list; (* eventually need to parse type constraints *)
+  val_constraint: ty option; (* eventually need to parse type constraints *)
   location: location;
 }
 
@@ -72,6 +72,8 @@ and typ_con = {
 and ty = 
   | App of tycon * ty list 
   | Var of string 
+  | Arrow of ty * ty
+  | Tuple of ty list
   (* | Poly of string list * ty *)
 
 and tycon = 
@@ -87,12 +89,18 @@ and ty_constraint =
   | TyEq of string * ty
   | VarEq of string * string
 
-
 let int = App(TInt, [])
 let float = App(TFloat, [])
 let bool = App(TBool, [])
 let string = App(TString, [])
 let unit = App(TUnit, [])
+
+type typ_expr = 
+  | Texp_base of string 
+  | Texp_list of typ_expr list
+  | Texp_tup of typ_expr list 
+  | Texp_arrow of typ_expr * typ_expr
+  | Texp_function of typ_expr list
 
 let string_of_tycon = function
   | TInt -> "int"
@@ -115,6 +123,8 @@ let rec string_of_type = function
       | _, _ -> ""
     end
   | Var (name) -> Printf.sprintf "Var(%s)" name 
+  | Arrow (l, r) -> Printf.sprintf "Arrow(%s -> %s)" (string_of_type l) (string_of_type r)
+  | Tuple (tys) -> Printf.sprintf "Tuple(%s)" (List.fold_left (fun acc ty -> acc ^ string_of_type ty ^ ", ") "" tys)
   
 (* let rec stringify_type typ = match typ with 
     TUnit -> "unit" | TInt -> "int" | TFloat -> "float" 
@@ -144,6 +154,7 @@ and stringify_expr expr = match expr.expr_desc with
   | Float f -> string_of_float f
   | Bool b -> string_of_bool b
   | Ident i -> Printf.sprintf "Id(%s)" i 
+  | Grouping g -> Printf.sprintf "(%s)" (stringify_expr g)
   | BinOp (left, op, right) -> Printf.sprintf "BinOp(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
   | UnOp (op, expr) -> Printf.sprintf "UnOp(%s%s)" op (stringify_expr expr)
   | Let (is_rec, value_binding, rhs) -> 
@@ -159,7 +170,6 @@ and stringify_expr expr = match expr.expr_desc with
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
   | Apply (fn, args) -> 
       Printf.sprintf "Apply(%s, [%s])" (stringify_expr fn) (stringify_expr_list args)
-  | _ -> "INVALID EXPR"
 
 and stringify_value_binding vb = 
   let lhs, rhs = vb.pat, vb.rhs in 
