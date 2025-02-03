@@ -101,8 +101,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = List.iter (fun t -> set_bp t 0) [")"; "->"; "|"; "of"; "in"; "type"; "with"; "then"; "else"; ";;"; "eof"]
 
   let lbp token =   
-    try Ok (Hashtbl.find bp_table token.lexeme)
-    with _ -> Error (Unexpected_token ("Unexpected token " ^ stringify_token token))
+    match Hashtbl.find_opt bp_table token.lexeme with 
+      Some bp -> bp
+    | None -> 70 (* assume function application if we can't find a BP *)  
 
   let expr_node expr_desc location = 
     {expr_desc = expr_desc; loc = location}
@@ -137,11 +138,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   and parse_expr rbp =
     let rec parse_expr_aux left =
       let* curr = Stream.take () in
-      let* lbp = if Hashtbl.find_opt bp_table curr.lexeme <> None then 
-        lbp curr
-      else 
-        Ok 70
-      in if rbp >= lbp then 
+      let lbp = lbp curr in if rbp >= lbp then 
         Ok left
       else
         let* left = if lbp = 70 then 
@@ -172,14 +169,19 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = left.loc.start_pos;
       end_pos = (List.hd args).loc.end_pos
     } in
-    Ok (expr_node (Apply (left, List.rev args)) loc)
+    Ok (expr_node (Apply (left, List.rev args)) (loc))
 
 
   let parse_grouped () = 
     let lparen = Stream.prev () in 
     let* inner = expr () in
-    let* rparen = Stream.expect(")") in
-    let location = {line = lparen.line; col = lparen.col; start_pos = lparen.pos; end_pos = rparen.pos} in 
+    let* rparen = Stream.expect ")" in
+    let location = {
+      line = lparen.line; 
+      col = lparen.col; 
+      start_pos = lparen.pos; 
+      end_pos = rparen.pos
+    } in 
       Ok (expr_node (Grouping inner) location)
 
   let parse_pattern () = 
@@ -198,7 +200,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   let parse_patterns () = 
     let rec parse_patterns_aux patterns = 
-      if Stream.accept_any (["ident"; "true"; "false"; "()"; "_"]) then 
+      if Stream.accept_any ["ident"; "true"; "false"; "()"; "_"] then 
         let* pattern = parse_pattern () in
         let _ = Stream.advance () in
           parse_patterns_aux (pattern :: patterns)
@@ -214,7 +216,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_function () =
     let fun_token = Stream.prev () in
     let* patterns = parse_patterns () in 
-    let* _ = Stream.expect ("->") in
+    let* _ = Stream.expect "->" in
     let* body = expr () in
     let* pos = Stream.pos () in 
     let location = {
@@ -229,7 +231,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* idents = parse_patterns () in
     let num_idents = List.length idents in 
     let lhs = List.hd idents in
-    let* _ = Stream.expect ("=") in 
+    let* _ = Stream.expect "=" in 
     let* rhs = if num_idents = 1 then 
       expr () 
     else 
@@ -241,24 +243,6 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* pos = Stream.pos () in
     let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
       Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location}   
-
-  (* let parse_value_binding let_loc =
-    let rec_parse_value_binding_aux = 
-    let* idents = parse_patterns () in
-    let num_idents = List.length idents in 
-    let lhs = List.hd idents in
-    let* _ = Stream.expect ("=") in 
-    let* rhs = if num_idents = 1 then 
-      expr () 
-    else 
-      let* body = expr () in
-      let* curr = Stream.take () in 
-      let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = curr.pos} in  
-        Ok (expr_node (Function (List.tl idents, body, None)) location)
-    in 
-    let* pos = Stream.pos () in
-    let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
-      Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location}    *)
 
   let parse_let_binding () = 
     let let_tok = Stream.prev () in 
@@ -281,7 +265,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
     let* condition = expr () in 
-    let* _ = Stream.expect ("then") in 
+    let* _ = Stream.expect "then" in 
     let* then_expr = expr () in 
     let* else_expr = if Stream.accept "else" then 
       let* expr = expr () in Ok (Some expr)
@@ -299,13 +283,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
-    let* _ = Stream.expect ("->") in 
+    let* _ = Stream.expect "->" in 
     let* expr = expr () in 
       Ok {lhs = pattern; rhs = expr}
 
   let parse_match_cases () = 
     let rec parse_match_cases_aux cases =
-      if Stream.accept ("|") then 
+      if Stream.accept "|" then 
         let* case = parse_match_case () in
           parse_match_cases_aux (case :: cases)
       else 
@@ -317,7 +301,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_pattern_match () = 
     let match_tok = Stream.prev () in
     let* match_expr = expr () in 
-    let* _ = Stream.expect ("with") in
+    let* _ = Stream.expect "with" in
     let* cases = parse_match_cases () in 
     let* pos = Stream.pos () in
     let location = {
@@ -338,9 +322,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
       | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
 
   let parse_type_constructor type_def_name = 
-    let* ident = Stream.expect ("ident") in 
-    let* typ = if Stream.accept ("of") then
-        let* annotation = Stream.expect ("annotation") in 
+    let* ident = Stream.expect "ident" in 
+    let* typ = if Stream.accept "of" then
+        let* annotation = Stream.expect "annotation" in 
         let* typ = parse_type_con_type annotation in 
           Ok (Some typ)
       else 
@@ -350,7 +334,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   let parse_type_constructors type_def_name = 
     let rec parse_type_constructors_aux typ_cons =
-      if Stream.accept ("|") then 
+      if Stream.accept "|" then 
         let* typ_con = parse_type_constructor type_def_name in
           parse_type_constructors_aux (typ_con :: typ_cons)
       else 
@@ -360,9 +344,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
         parse_type_constructors_aux [typ_con]
 
   let parse_type_definition () = 
-    let* type_tok = Stream.expect ("type") in 
-    let* ident = Stream.expect ("ident") in 
-    let* _ = Stream.expect ("=") in 
+    let* type_tok = Stream.expect "type" in 
+    let* ident = Stream.expect "ident" in 
+    let* _ = Stream.expect "=" in 
     let* variants = parse_type_constructors ident.lexeme in
     let* pos = Stream.pos () in 
     let location = {
