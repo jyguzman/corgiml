@@ -157,9 +157,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
   and parse_function_application left = 
     let rec parse_fn_app_aux args =
       let* curr = Stream.take () in
-      match Hashtbl.find_opt bp_table curr.lexeme with
-        Some _ -> Ok args 
-      | None -> let* arg = parse_expr 71 in 
+      if lbp curr <> 70 then Ok args else
+        let* arg = parse_expr 71 in 
           parse_fn_app_aux (arg :: args)
     in 
     let* args = parse_fn_app_aux [] in 
@@ -169,8 +168,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = left.loc.start_pos;
       end_pos = (List.hd args).loc.end_pos
     } in
-    Ok (expr_node (Apply (left, List.rev args)) (loc))
-
+    Ok (expr_node (Apply (left, List.rev args)) loc)
 
   let parse_grouped () = 
     let lparen = Stream.prev () in 
@@ -246,9 +244,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   let parse_let_binding () = 
     let let_tok = Stream.prev () in 
-    let is_rec = Stream.accept ("rec") in 
+    let is_rec = Stream.accept "rec" in 
     let* value_binding = parse_value_binding (loc let_tok) in
-    let* body = if Stream.accept ("in") then
+    let* body = if Stream.accept "in" then
       let* expr = expr () in Ok (Some expr)
     else 
       Ok None 
@@ -314,11 +312,11 @@ module Parser (Stream : TOKEN_STREAM) = struct
 
   let parse_type_con_type token = 
     match token.lexeme with 
-        "int" -> Ok (App(TInt, [])) 
-      | "float" -> Ok (App(TInt, []))  
-      | "string" -> Ok (App(TInt, [])) 
-      | "bool" -> Ok (App(TInt, [])) 
-      | "unit" -> Ok (App(TUnit, [])) 
+        "Int" -> Ok (App(TInt, [])) 
+      | "Float" -> Ok (App(TInt, []))  
+      | "String" -> Ok (App(TInt, [])) 
+      | "Bool" -> Ok (App(TInt, [])) 
+      | "Unit" -> Ok (App(TUnit, [])) 
       | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
 
   let parse_type_constructor type_def_name = 
