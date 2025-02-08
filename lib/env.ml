@@ -18,4 +18,7 @@ let rec get (env: env) name =
         get env_rest name
 
 let int_bin_op_type = App(TArrow, [int; App(TArrow, [int; int])])
+let float_bin_op_type = App(TArrow, [float; App(TArrow, [float; float])])
+
 let (init_type_env: env) = List.fold_left (fun env op -> (op, VarBind int_bin_op_type) :: env) [] ["+"; "-"; "*"; "/"] 
+let _ = List.fold_left (fun env op -> (op, VarBind float_bin_op_type) :: env) [] ["+."; "-."; "*."; "/."] 

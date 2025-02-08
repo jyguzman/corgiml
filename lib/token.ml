@@ -1,28 +1,31 @@
-type int_arith = 
+type token_type = 
+  | Integer of int
+  | Decimal of float
+  | String of string
+  | Ident of string
+
   | Plus
   | Slash 
   | Star
   | Minus 
 
-type float_arith = 
-  | PlusDot
-  | SlashDot
-  | StarDot
-  | MinusDot
+  | Plus_dot
+  | Slash_dot
+  | Star_dot
+  | Minus_dot
 
-type comparison = 
   | Less 
-  | Leq
+  | Less_equal
   | Greater 
-  | Geq
-  | SingleEqual
-  | DoubleEqual
-  | BangEqual
-  | LeftRightArrow
+  | Greater_equal
+  | Single_equal
+  | Double_equal
+  | Bang_equal
+  | Less_greater
 
-type logical = And | Or
-
-type keywords = 
+  | Double_ampersand
+  | Double_vertical_bar
+  
   | Let | Rec | In
   | Match | With
   | If | Else | Then
@@ -33,51 +36,29 @@ type keywords =
   | Type
   | And
 
-type literal = 
-  | Integer of int
-  | Decimal of float
-  | String of string
-  | Ident of string
-
-type special = 
-  | Arrow | Brackets 
-  | Wildcard 
-  | EmptyParens
-  | PttrnSeperator
-  | Cons
-
-
-type type_annotation = 
-  | TInt 
-  | TFloat
-  | TBool
-  | TString 
-  | TNone 
-
-type token_type = 
-  | Primary
-  | Annotation of type_annotation
-  | Literal of literal
-  | IntArithOp of int_arith
-  | FloatArithOp of float_arith
-  | ComparisonOp of comparison
-  | Logical of logical
-  | Minus
-  | Keywords of keywords
-  | Special of special
-  | EOF
-  | LParen 
-  | RParen
-  | LBracket 
-  | RBracket
-  | Colon 
+  | L_paren 
+  | R_paren
+  | L_bracket 
+  | R_bracket
   | Semicolon
-  | DoubleSemicolon
+  | Double_semicolon
 
-let get_token_type token_type = 
-  match token_type with 
-    Literal _ -> Primary
-  | _ -> token_type
+  | Equal_right
+  | Dash_right (* -> *) 
+  | Empty_brackets 
+  | Wildcard 
+  | Empty_parens
+  | Vertical_bar
+  | Colon 
+  | Double_colon
+
+  | Int_annotation
+  | Float_annotation 
+  | String_annotation
+  | Bool_annotation
+  | Unit_annotation
+
+  | Eof
 
 type token = {
   name: string;

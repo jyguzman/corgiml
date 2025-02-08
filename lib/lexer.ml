@@ -8,22 +8,22 @@ let cut_first_n str n =
 module Keywords = Map.Make(String);;
 
 let keywords = Keywords.of_seq @@ List.to_seq [
-  ("fun", Keywords Fun); 
+  ("fun", Fun); 
 
-  ("match", Keywords Match); ("with", Keywords With);
+  ("match", Match); ("with", With);
 
-  ("let", Keywords Let); ("rec", Keywords Rec); ("in", Keywords In);
+  ("let", Let); ("rec", Rec); ("in", In);
 
-  ("if", Keywords If); ("else", Keywords Else); ("then", Keywords Then);
+  ("if", If); ("else", Else); ("then", Then);
 
-  ("true", Keywords True); ("false", Keywords False);
+  ("true", True); ("false", False);
 
-  ("begin", Keywords Begin); ("end", Keywords End); 
+  ("begin", Begin); ("end", End); 
 
-  ("of", Keywords Of); ("type", Keywords Type); ("and", Keywords And);
+  ("of", Of); ("type", Type); ("and", And);
 
-  ("Int", Annotation TInt); ("Float", Annotation TFloat); ("String", Annotation TString);
-  ("Bool", Annotation TBool); ("Unit", Annotation TNone)
+  ("Int", Int_annotation); ("Float", Float_annotation); ("String", String_annotation);
+  ("Bool", Bool_annotation); ("Unit", Unit_annotation)
 
 ];;
 
@@ -88,7 +88,7 @@ let tokenize_string lexer quote =
         tokenize_string_aux {lexer with current = rest; col = lexer.col + 1; pos = lexer.pos + 1} acc_new
   in
     let str, updated_lexer = tokenize_string_aux lexer "" in
-    let token_type = Literal (String str) in
+    let token_type = String str in
     let token = Token.make "string" token_type str lexer.line lexer.col lexer.pos in
     let new_tokens = token :: updated_lexer.tokens in
     Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos new_tokens 
@@ -111,9 +111,9 @@ let tokenize_number lexer =
     let num_string, updated_lexer = tokenize_number lexer "" in
     let name, token_type = 
       if String.contains num_string '.' then 
-        "decimal", Literal (Decimal(float_of_string num_string))
+        "decimal", Decimal(float_of_string num_string)
       else 
-        "integer", Literal (Integer(int_of_string num_string))
+        "integer", Integer(int_of_string num_string)
     in
     let token = Token.make name token_type num_string lexer.line lexer.col lexer.pos in
     let new_tokens = token :: updated_lexer.tokens in
@@ -134,11 +134,12 @@ let tokenize_ident lexer =
     let ident, updated_lexer = tokenize_ident_aux lexer "" in
     let keyword = Keywords.find_opt ident keywords in 
     let name, token_type = match keyword with 
-      | Some keyword_type -> 
+        Some keyword_type -> 
         (match keyword_type with 
-          Annotation _ -> "annotation", keyword_type
+          Int_annotation | Float_annotation | String_annotation
+          | Bool_annotation | Unit_annotation -> "annotation", keyword_type
           | _ -> ident, keyword_type)
-      | None -> "ident", Literal (Ident ident)
+      | None -> "ident", Ident ident
     in
     let token = Token.make name token_type ident lexer.line lexer.col lexer.pos in
     let updated_tokens = token :: updated_lexer.tokens in
@@ -149,32 +150,32 @@ let tokenize_op lexer c =
   let next = peek lexer 1 in 
   let name, op, lexeme = match c with
 
-    | '(' -> if next = ')' then ("empty_parens", Special EmptyParens, "()") else ("lparen", LParen, "(") 
-    | ')' -> ("rparen", RParen, ")") 
-    | ';' -> if next = ';' then ("double_semicolon", DoubleSemicolon, ";;") else ("semicolon", Semicolon, ";")
-    | '[' -> if next = ']' then ("brackets", Special Brackets, "[]") else ("lbracket", LBracket, "]")
-    | ':' -> if next = ':' then ("cons", Special Cons, "::") else ("colon", Colon, ":")
-    | '*' -> if next = '.' then ("star", FloatArithOp StarDot, "*.") else ("star", IntArithOp Star, "*")
-    | '+' -> if next = '.' then ("plus", FloatArithOp PlusDot, "+.") else ("plus", IntArithOp Plus, "+")
-    | '/' -> if next = '.' then ("slash", FloatArithOp SlashDot, "/.") else ("slash", IntArithOp Slash, "/")
+    | '(' -> if next = ')' then ("empty_parens", Empty_parens, "()") else ("lparen", L_paren, "(") 
+    | ')' -> ("rparen", R_paren, ")") 
+    | ';' -> if next = ';' then ("double_semicolon", Double_semicolon, ";;") else ("semicolon", Semicolon, ";")
+    | '[' -> if next = ']' then ("brackets", Empty_brackets, "[]") else ("lbracket", L_bracket, "]")
+    | ':' -> if next = ':' then ("double_colon", Double_colon, "::") else ("colon", Colon, ":")
+    | '*' -> if next = '.' then ("star", Star_dot, "*.") else ("star", Star, "*")
+    | '+' -> if next = '.' then ("plus", Plus_dot, "+.") else ("plus", Plus, "+")
+    | '/' -> if next = '.' then ("slash", Slash_dot, "/.") else ("slash", Slash, "/")
 
     | '<' -> (match next with 
-      '>' -> ("left_right_arrow", ComparisonOp LeftRightArrow, "<>")
-      |'=' -> ("leq", ComparisonOp Leq, "<=")
-      | _ -> ("less", ComparisonOp Less, "<"))
+      '>' -> ("less_greater", Less_greater, "<>")
+      |'=' -> ("less_equal", Less_equal, "<=")
+      | _ -> ("less", Less, "<"))
 
     | '-' -> (match next with 
-      '>' -> ("arrow", Special Arrow, "->")
-      |'.' -> ("minus_dot", FloatArithOp MinusDot, "-.")
-      | _ -> ("minus", IntArithOp Minus, "-"))
+      '>' -> ("dash_right", Dash_right, "->")
+      |'.' -> ("minus_dot", Minus_dot, "-.")
+      | _ -> ("minus", Minus, "-"))
       
-    | '>' -> if next = '=' then ("geq", ComparisonOp Geq, ">=") else ("greater", ComparisonOp Greater, ">")
-    | '=' -> if next = '=' then ("double_equal", ComparisonOp DoubleEqual, "==") else ("equal", ComparisonOp SingleEqual, "=")
-    | '!' -> if next = '=' then ("not_equal", ComparisonOp BangEqual, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
+    | '>' -> if next = '=' then ("greater_equal", Greater_equal, ">=") else ("greater", Greater, ">")
+    | '=' -> if next = '=' then ("double_equal", Double_equal, "==") else ("single_equal", Single_equal, "=")
+    | '!' -> if next = '=' then ("bang_equal", Bang_equal, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
 
-    | '|' -> if next = '|' then ("or", Logical Or, "||") else ("clause_sep", Special PttrnSeperator, "|") 
-    | '&' -> if next = '&' then ("and", Logical And, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
-    | '_' -> ("wildcard", Special Wildcard, "_")
+    | '|' -> if next = '|' then ("double_vertical_bar", Double_vertical_bar, "||") else ("vertical_bar", Vertical_bar, "|") 
+    | '&' -> if next = '&' then ("Double_ampersand", Double_ampersand, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
+    | '_' -> ("wildcard", Wildcard, "_")
     
     | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col
   in 
@@ -187,7 +188,7 @@ let tokenize_op lexer c =
  let tokenize_source source = 
   let rec tokenize_source lexer = 
     if String.length lexer.current = 0 then 
-      let eof = Token.make "eof" EOF "eof" lexer.line lexer.col lexer.pos in {lexer with tokens = eof :: lexer.tokens} 
+      let eof = Token.make "eof" Eof "eof" lexer.line lexer.col lexer.pos in {lexer with tokens = eof :: lexer.tokens} 
     else
       let c = peek lexer 0 in
       let skip = cut_first_n lexer.current 1 in 

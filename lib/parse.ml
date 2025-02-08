@@ -34,7 +34,7 @@ let loc token =
 
 module TokenStream : TOKEN_STREAM = struct 
   let tokens = ref []
-  let prev = ref (Token.make "" EOF "" (-1) (-1) (-1))
+  let prev = ref (Token.make "" Eof "" (-1) (-1) (-1))
   
   let init toks = tokens := toks 
 
@@ -111,17 +111,18 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let nud token = 
     let loc = loc token in 
     match token.token_type with 
-      Literal l -> (match l with 
-          Integer i -> Ok (expr_node (Integer i) loc)
-        | Decimal d -> Ok (expr_node (Float d) loc)
-        | String s -> let bytes = String.to_bytes s in Ok (expr_node (String (bytes, Bytes.length bytes)) loc) 
-        | Ident i -> Ok (expr_node (Ident i) loc))
-    | Keywords True -> Ok (expr_node (Bool true) loc)
-    | Keywords False -> Ok (expr_node (Bool false) loc)
+      Integer i -> Ok (expr_node (Integer i) loc)
+    | Decimal d -> Ok (expr_node (Float d) loc)
+    | String s -> 
+      let bytes = String.to_bytes s in 
+        Ok (expr_node (String (bytes, Bytes.length bytes)) loc) 
+    | Ident i -> Ok (expr_node (Ident i) loc)
+    | True -> Ok (expr_node (Bool true) loc)
+    | False -> Ok (expr_node (Bool false) loc)
     | _ ->  
       try match Hashtbl.find prec_table token.lexeme with 
         Nud nud -> nud ()
-      | Led _ -> Error (Unexpected_token ("Unexpected token for start of expression: " ^ stringify_token token))
+      | Led _ -> Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
       with _ -> 
         Error (Unexpected_token ("expected the start of an expression (literal, identifier, prefix operator, or opening delimiter) but got " ^ stringify_token token))
 
@@ -158,7 +159,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let rec parse_fn_app_aux args =
       let* curr = Stream.take () in
       if lbp curr <> 70 then Ok args else
-        let* arg = parse_expr 71 in 
+        let* arg = expr () in 
           parse_fn_app_aux (arg :: args)
     in 
     let* args = parse_fn_app_aux [] in 
@@ -170,6 +171,13 @@ module Parser (Stream : TOKEN_STREAM) = struct
     } in
     Ok (expr_node (Apply (left, List.rev args)) loc)
 
+  let upper_ident () = 
+    let* curr = Stream.expect ("ident") in 
+    let first_letter = curr.lexeme.[0] in 
+    match first_letter with 
+      'A'..'Z' -> Ok curr
+      | _ -> Error (Unexpected_token "Expected an identifier starting with an upper case letter") 
+  
   let parse_grouped () = 
     let lparen = Stream.prev () in 
     let* inner = expr () in
@@ -186,14 +194,14 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* next = Stream.take () in 
     let loc = loc next in 
     match next.token_type with  
-      Literal Integer i -> Ok {pattern_desc = ConstInteger i; loc = loc}
-    | Literal Decimal d -> Ok {pattern_desc = ConstFloat d; loc = loc}
-    | Literal String s -> Ok {pattern_desc = ConstString s; loc = loc}
-    | Literal Ident i -> Ok {pattern_desc = ConstIdent i; loc = loc}
-    | Keywords True -> Ok {pattern_desc = True; loc = loc}
-    | Keywords False -> Ok {pattern_desc = False; loc = loc}
-    | Special EmptyParens -> Ok {pattern_desc = EmptyParens; loc = loc}
-    | Special Wildcard -> Ok {pattern_desc = Wildcard; loc = loc}
+      Integer i -> Ok {pattern_desc = ConstInteger i; loc = loc}
+    | Decimal d -> Ok {pattern_desc = ConstFloat d; loc = loc}
+    | String s -> Ok {pattern_desc = ConstString s; loc = loc}
+    | Ident i -> Ok {pattern_desc = ConstIdent i; loc = loc}
+    | True -> Ok {pattern_desc = True; loc = loc}
+    | False -> Ok {pattern_desc = False; loc = loc}
+    | Empty_parens -> Ok {pattern_desc = EmptyParens; loc = loc}
+    | Wildcard -> Ok {pattern_desc = Wildcard; loc = loc}
     | _ -> Error (Unexpected_token ("expected a pattern but got " ^ (stringify_token next)))
 
   let parse_patterns () = 
@@ -313,8 +321,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_type_con_type token = 
     match token.lexeme with 
         "Int" -> Ok (App(TInt, [])) 
-      | "Float" -> Ok (App(TInt, []))  
-      | "String" -> Ok (App(TInt, [])) 
+      | "float" -> Ok (App(TInt, []))  
+      | "Ftring" -> Ok (App(TInt, [])) 
       | "Bool" -> Ok (App(TInt, [])) 
       | "Unit" -> Ok (App(TUnit, [])) 
       | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
@@ -322,9 +330,9 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_type_constructor type_def_name = 
     let* ident = Stream.expect "ident" in 
     let* typ = if Stream.accept "of" then
-        let* annotation = Stream.expect "annotation" in 
-        let* typ = parse_type_con_type annotation in 
-          Ok (Some typ)
+      let* annotation = Stream.expect "annotation" in 
+      let* typ = parse_type_con_type annotation in 
+        Ok (Some typ)
       else 
         Ok None
     in 
@@ -358,7 +366,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
-      Keywords Type -> parse_type_definition () 
+      Type -> parse_type_definition () 
     | _ -> 
       let* expr = expr () in match expr.expr_desc with 
         Let (is_rec, value_binding, body) -> 
@@ -397,15 +405,15 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* right = parse_expr bp in 
     Ok (expr_node (BinOp (left, op.lexeme, right)) (loc_of_bin_op left right))
 
-  let _ = List.iter (fun op -> Hashtbl.add prec_table op (Led make_binary)) ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
+  let _ = List.iter (fun op -> Hashtbl.add prec_table op (Led bin_op)) ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
   
   let _ = 
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
       [("(", Nud parse_grouped); ("if", Nud parse_if_expr); 
       ("let", Nud parse_let_binding); ("match", Nud parse_pattern_match); 
-      ("fun", Nud parse_function)]
+      ("fun", Nud parse_function);]
 end
-
+ 
 module ParserImpl = Parser(TokenStream)
 
 let parse tokens = 

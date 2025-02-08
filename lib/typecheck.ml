@@ -49,30 +49,23 @@ module TypeChecker (F: Error.FORMATTER) = struct
       end
 
     | Apply(fn, args) ->
-        let* fn_type = check_expr env fn in 
-        let _ = print_endline ("expr: " ^ stringify_expr fn) in
-        (* let _ = print_endline ("fn type: " ^ string_of_type fn_type) in  *)
-        (match fn_type with 
-          | App(TArrow, types) -> 
-            
+      let* fn_type = check_expr env fn in 
+      let _ = print_endline ("fn type: " ^ string_of_type fn_type) in
+      let _ = print_endline ("fn: " ^ stringify_expr fn) in
+      (match fn_type with 
+        | App(TArrow, [first; _]) ->
             begin match args with 
-              [] -> Error (Type_mismatch "not enough args")
-            | arg :: rest -> 
-              let* arg_type = check_expr env arg in
-              if arg_type <> List.hd types then 
-                Error (Type_mismatch (expr_str ^ "types don't match"))
-              else 
-                let app = {expr_desc = Apply(fn, [arg]); loc = expr.loc} in
-                check_expr env {expr_desc = Apply(app, rest); loc = expr.loc}
+                [] -> Error (Type_mismatch "not enough args")
+              | arg :: rest_args -> 
+                let* arg_type = check_expr env arg in
+                if arg_type <> first then 
+                  Error (Type_mismatch (expr_str ^ "types don't match"))
+                else 
+                  let app = Apply({expr_desc = Apply(fn, [arg]); loc = fn.loc}, rest_args) in
+                  check_expr env {expr_desc = app; loc = fn.loc}
             end
-            (* let arg = List.hd args in
-            let* arg_type = check_expr env arg in
-            if arg_type <> List.hd types then 
-              Error (Type_mismatch (expr_str ^ "types don't match"))
-            else 
-              check_expr env {expr_desc = Apply(fn, List.tl args); loc = expr.loc} *)
-          | _ -> 
-            Error (Type_mismatch "not a function"))
+        | _ -> 
+          Error (Type_mismatch "not a function"))
 
     | BinOp (l, op, r) -> 
       let* l_type = check_expr env l in 
@@ -101,6 +94,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
       end
+
     | Ast.Let (_, value_binding, body) -> 
       let* rhs_type = check_expr env value_binding.rhs in
       let* body = match body with None -> Error (Unrecognized_operation "body empty") | Some b -> Ok b in
@@ -117,12 +111,9 @@ module TypeChecker (F: Error.FORMATTER) = struct
             check_expr new_env body
         | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat)))
       end
-    | _ -> Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))
-
-  (* let check_expr_list env exprs =  *)
-    
+    | _ -> Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
   
-  let check_module_item mi env = match mi with 
+  let check_module_item env = function 
       Ast.Expr expr -> check_expr env expr
     | Ast.LetDeclaration (_, value_binding, _) -> 
       let* rhs_type = check_expr env value_binding.rhs in
