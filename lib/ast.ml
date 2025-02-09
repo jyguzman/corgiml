@@ -37,7 +37,7 @@ and expression_desc =
   | Grouping of expression
   | If of expression * expression * expression option
   | Let of bool * value_binding * expression option
-  | Function of pattern list * expression * ty option
+  | Function of string list * expression * ty option
   | Apply of expression * expression list
   | Match of expression * case list
 
@@ -165,7 +165,7 @@ and stringify_expr expr = match expr.expr_desc with
       let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
   | Function (params, body, _) -> 
-      Printf.sprintf "Fun(%s -> %s)" (stringify_patterns params) (stringify_expr body)
+      Printf.sprintf "Fun(%s -> %s)" (String.concat ", " params) (stringify_expr body)
   | Match (expr, cases) -> 
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
   | Apply (fn, args) -> 

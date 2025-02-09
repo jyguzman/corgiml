@@ -219,9 +219,24 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let params = List.rev params in 
       List.fold_left (fun fn param -> expr_node (Function {param = param; expr = fn}) loc) body params *)
 
+  let parse_idents patterns = 
+    let rec parse_idents_aux patterns idents =
+      if List.length patterns = 0 
+        then Ok idents 
+      else 
+        let* ident = match (List.hd patterns).pattern_desc with 
+          ConstIdent i -> Ok i
+        | _ -> 
+          Error (Unexpected_token ("function param must be an identifier"))
+        in             
+          parse_idents_aux (List.tl patterns) (ident :: idents)
+    in 
+      parse_idents_aux patterns []
+
   let parse_function () =
     let fun_token = Stream.prev () in
-    let* patterns = parse_patterns () in 
+    let* patterns = parse_patterns () in
+    let* idents = parse_idents patterns in 
     let* _ = Stream.expect "->" in
     let* body = expr () in
     let* pos = Stream.pos () in 
@@ -231,26 +246,27 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = fun_token.pos; 
       end_pos = pos
     } in 
-      Ok (expr_node (Function (patterns, body, None)) location)
+      Ok (expr_node (Function (List.rev idents, body, None)) location)
 
   let parse_value_binding let_loc =
-    let* idents = parse_patterns () in
-    let num_idents = List.length idents in 
-    let lhs = List.hd idents in
+    let* patterns = parse_patterns () in
+    let num_idents = List.length patterns in 
+    let lhs = List.hd patterns in
     let* _ = Stream.expect "=" in 
     let* rhs = if num_idents = 1 then 
       expr () 
     else 
       let* body = expr () in
       let* curr = Stream.take () in 
+      let* idents = parse_idents (List.tl patterns) in 
       let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = curr.pos} in  
-        Ok (expr_node (Function (List.tl idents, body, None)) location)
+        Ok (expr_node (Function (List.rev idents, body, None)) location)
     in 
     let* pos = Stream.pos () in
     let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
       Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location}   
 
-  let parse_let_binding () = 
+  let parse_let () = 
     let let_tok = Stream.prev () in 
     let is_rec = Stream.accept "rec" in 
     let* value_binding = parse_value_binding (loc let_tok) in
@@ -304,7 +320,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* case = parse_match_case () in 
       parse_match_cases_aux [case] 
 
-  let parse_pattern_match () = 
+  let parse_match () = 
     let match_tok = Stream.prev () in
     let* match_expr = expr () in 
     let* _ = Stream.expect "with" in
@@ -405,12 +421,14 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* right = parse_expr bp in 
     Ok (expr_node (BinOp (left, op.lexeme, right)) (loc_of_bin_op left right))
 
-  let _ = List.iter (fun op -> Hashtbl.add prec_table op (Led bin_op)) ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
+  let _ = List.iter 
+        (fun op -> Hashtbl.add prec_table op (Led bin_op)) 
+        ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
   
   let _ = 
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
       [("(", Nud parse_grouped); ("if", Nud parse_if_expr); 
-      ("let", Nud parse_let_binding); ("match", Nud parse_pattern_match); 
+      ("let", Nud parse_let); ("match", Nud parse_match); 
       ("fun", Nud parse_function);]
 end
  

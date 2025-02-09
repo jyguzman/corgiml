@@ -30,7 +30,9 @@ module TypeChecker (F: Error.FORMATTER) = struct
       | Some typ -> 
         match typ with 
           Env.VarBind b -> Ok b)
+
     | Grouping g -> check_expr env g
+    
     | If (condition, then_expr, else_expr) ->  
       let* cond_type = check_expr env condition in 
       begin match cond_type with 
@@ -47,6 +49,10 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | _ -> 
           Error (Type_mismatch (expr_str ^ "\n" ^ "if condition must be boolean"))
       end
+
+    (* | Function (idents, body, _) -> 
+      let idents = in
+      Ok int *)
 
     | Apply(fn, args) ->
       let* fn_type = check_expr env fn in 
