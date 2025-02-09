@@ -26,15 +26,12 @@ type token_type =
   | Double_ampersand
   | Double_vertical_bar
   
-  | Let | Rec | In
+  | Let | Rec | In | And | Fun
   | Match | With
   | If | Else | Then
   | True | False
-  | Fun
   | Begin | End
-  | Of
-  | Type
-  | And
+  | Type | Of
 
   | L_paren 
   | R_paren

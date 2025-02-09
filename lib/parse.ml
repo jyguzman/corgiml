@@ -179,14 +179,17 @@ module Parser (Stream : TOKEN_STREAM) = struct
       | _ -> Error (Unexpected_token "Expected an identifier starting with an upper case letter") 
   
   let parse_grouped () = 
-    let lparen = Stream.prev () in 
+    let opening = Stream.prev () in 
     let* inner = expr () in
-    let* rparen = Stream.expect ")" in
+    let* closing = if opening.lexeme = "begin" then 
+      Stream.expect "end" 
+    else 
+      Stream.expect ")" in
     let location = {
-      line = lparen.line; 
-      col = lparen.col; 
-      start_pos = lparen.pos; 
-      end_pos = rparen.pos
+      line = opening.line; 
+      col = opening.col; 
+      start_pos = opening.pos; 
+      end_pos = closing.pos
     } in 
       Ok (expr_node (Grouping inner) location)
 
@@ -215,28 +218,28 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
       parse_patterns_aux [] 
 
-  (* let make_fn_node params body loc = 
+  (* let make_fn_node parrw2qiams body loc = 
     let params = List.rev params in 
       List.fold_left (fun fn param -> expr_node (Function {param = param; expr = fn}) loc) body params *)
 
-  let parse_idents patterns = 
-    let rec parse_idents_aux patterns idents =
-      if List.length patterns = 0 
-        then Ok idents 
-      else 
-        let* ident = match (List.hd patterns).pattern_desc with 
-          ConstIdent i -> Ok i
-        | _ -> 
-          Error (Unexpected_token ("function param must be an identifier"))
-        in             
-          parse_idents_aux (List.tl patterns) (ident :: idents)
-    in 
-      parse_idents_aux patterns []
+let parse_params patterns = 
+  let rec parse_idents_aux patterns idents =
+    if List.length patterns = 0 
+      then Ok idents 
+    else 
+      let* ident = match (List.hd patterns).pattern_desc with 
+        ConstIdent i -> Ok i
+      | _ -> 
+        Error (Unexpected_token ("function param must be an identifier"))
+      in             
+        parse_idents_aux (List.tl patterns) (ident :: idents)
+  in 
+    parse_idents_aux patterns []
 
   let parse_function () =
     let fun_token = Stream.prev () in
     let* patterns = parse_patterns () in
-    let* idents = parse_idents patterns in 
+    let* idents = parse_params patterns in 
     let* _ = Stream.expect "->" in
     let* body = expr () in
     let* pos = Stream.pos () in 
@@ -248,7 +251,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     } in 
       Ok (expr_node (Function (List.rev idents, body, None)) location)
 
-  let parse_value_binding let_loc =
+  let parse_value_binding () =
     let* patterns = parse_patterns () in
     let num_idents = List.length patterns in 
     let lhs = List.hd patterns in
@@ -256,20 +259,31 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* rhs = if num_idents = 1 then 
       expr () 
     else 
-      let* body = expr () in
-      let* curr = Stream.take () in 
-      let* idents = parse_idents (List.tl patterns) in 
-      let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = curr.pos} in  
-        Ok (expr_node (Function (List.rev idents, body, None)) location)
+      let* fn_body = expr () in
+      let* pos = Stream.pos () in 
+      let* idents = parse_params (List.tl patterns) in 
+      let location = {line = lhs.loc.line; col = lhs.loc.col; start_pos = lhs.loc.start_pos; end_pos = pos} in  
+        Ok (expr_node (Function (List.rev idents, fn_body, None)) location)
     in 
     let* pos = Stream.pos () in
-    let location = {line = let_loc.line; col = let_loc.col; start_pos = let_loc.start_pos; end_pos = pos} in  
-      Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location}   
+    let location = {line = lhs.loc.line; col = lhs.loc.col; start_pos = lhs.loc.start_pos; end_pos = pos} in  
+      Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location} 
+      
+  let parse_value_bindings () = 
+    let rec parse_value_bindings_aux bindings =
+      if Stream.accept "and" then 
+        let* binding = parse_value_binding () in 
+          parse_value_bindings_aux (binding :: bindings)
+      else
+        Ok bindings
+    in 
+      let* binding = parse_value_binding () in 
+        parse_value_bindings_aux [binding]
 
   let parse_let () = 
-    let let_tok = Stream.prev () in 
+    let prev_tok = Stream.prev () in
     let is_rec = Stream.accept "rec" in 
-    let* value_binding = parse_value_binding (loc let_tok) in
+    let* value_bindings = parse_value_bindings () in
     let* body = if Stream.accept "in" then
       let* expr = expr () in Ok (Some expr)
     else 
@@ -277,12 +291,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
     let* curr = Stream.take () in 
     let location = {
-      line = let_tok.line; 
-      col = let_tok.col; 
-      start_pos = let_tok.pos; 
+      line = prev_tok.line; 
+      col = prev_tok.col; 
+      start_pos = prev_tok.pos; 
       end_pos = curr.pos} 
     in  
-      Ok (expr_node (Let (is_rec, value_binding, body)) location)
+      Ok (expr_node (Let (is_rec, value_bindings, body)) location)
 
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
@@ -301,6 +315,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
       end_pos = pos
     } in
       Ok (expr_node (If (condition, then_expr, else_expr)) location)
+
+  let parse_tuple_expr () = 
+    Ok ()
+
+  let parse_record_expr () = 
+    Ok ()
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
@@ -337,8 +357,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_type_con_type token = 
     match token.lexeme with 
         "Int" -> Ok (App(TInt, [])) 
-      | "float" -> Ok (App(TInt, []))  
-      | "Ftring" -> Ok (App(TInt, [])) 
+      | "Float" -> Ok (App(TInt, []))  
+      | "String" -> Ok (App(TInt, [])) 
       | "Bool" -> Ok (App(TInt, [])) 
       | "Unit" -> Ok (App(TUnit, [])) 
       | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
@@ -377,19 +397,28 @@ module Parser (Stream : TOKEN_STREAM) = struct
       start_pos = type_tok.pos;
       end_pos = pos
     } in
-      Ok (TypeDefintion ({type_name = ident.lexeme; type_constructors = variants}, location))
+      Ok {
+        module_item_desc = TypeDefintion {type_name = ident.lexeme; type_constructors = variants}; 
+        module_item_loc = location
+      }
 
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
-      Type -> parse_type_definition () 
+      Type -> parse_type_definition ()
     | _ -> 
-      let* expr = expr () in match expr.expr_desc with 
-        Let (is_rec, value_binding, body) -> 
-          (match body with 
-              None -> Ok (LetDeclaration (is_rec, value_binding, expr.loc)) 
-            | Some _ -> Ok (Expr expr))
-        | _ -> Ok (Expr expr)
+      let* expr = expr () in 
+      match expr.expr_desc with  
+        Let (is_rec, value_bindings, body) ->  
+          (match body with  
+              None -> Ok { 
+                module_item_desc = LetDeclaration (is_rec, value_bindings);
+                module_item_loc = expr.loc
+              } 
+            | Some _ -> 
+              Ok {module_item_desc = Expr expr; module_item_loc = expr.loc})
+        | _ -> 
+          Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}
 
   let parse_program () = 
     let rec parse_program_aux module_items = 
@@ -408,7 +437,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     end_pos = right.loc.end_pos
   }
 
-  let make_binary lhs = 
+  let make_binary lhs =  
     let op = Stream.prev () in
     let op_expr = {expr_desc = Ident op.lexeme; loc = loc op} in 
     let bp = Hashtbl.find bp_table op.lexeme in
@@ -427,7 +456,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   
   let _ = 
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
-      [("(", Nud parse_grouped); ("if", Nud parse_if_expr); 
+      [("(", Nud parse_grouped); ("begin", Nud parse_grouped); ("if", Nud parse_if_expr); 
       ("let", Nud parse_let); ("match", Nud parse_match); 
       ("fun", Nud parse_function);]
 end

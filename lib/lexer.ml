@@ -174,7 +174,7 @@ let tokenize_op lexer c =
     | '!' -> if next = '=' then ("bang_equal", Bang_equal, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
 
     | '|' -> if next = '|' then ("double_vertical_bar", Double_vertical_bar, "||") else ("vertical_bar", Vertical_bar, "|") 
-    | '&' -> if next = '&' then ("Double_ampersand", Double_ampersand, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
+    | '&' -> if next = '&' then ("double_ampersand", Double_ampersand, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
     | '_' -> ("wildcard", Wildcard, "_")
     
     | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col

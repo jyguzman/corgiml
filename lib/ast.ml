@@ -5,6 +5,22 @@ type location = {
   end_pos: int
 }
 
+type ty = 
+  | App of tycon * ty list 
+  | Var of string 
+  | Arrow of ty * ty
+  | Tuple of ty list
+  (* | Poly of string list * ty *)
+
+and tycon = 
+  | TInt 
+  | TFloat
+  | TString 
+  | TBool
+  | TUnit 
+  | TArrow 
+  | TyFun of string list * ty
+
 type pattern = {
   pattern_desc: pattern_desc;
   loc: location
@@ -32,14 +48,20 @@ and expression_desc =
   | Bool of bool
   | String of bytes * int
   | Ident of string 
+  | Grouping of expression
+
   | BinOp of expression * string * expression
   | UnOp of string * expression 
-  | Grouping of expression
+
   | If of expression * expression * expression option
-  | Let of bool * value_binding * expression option
+  | Let of bool * value_binding list * expression option
+  | Match of expression * case list
+  
   | Function of string list * expression * ty option
   | Apply of expression * expression list
-  | Match of expression * case list
+  
+  | Tuple of expression list
+  | Record of field list
 
 and case = {
   lhs: pattern;
@@ -53,10 +75,20 @@ and value_binding = {
   location: location;
 }
 
-and module_item =
+and field = {
+  key: string;
+  value: expression
+}
+
+type module_item = {
+  module_item_desc: module_item_desc;
+  module_item_loc: location
+}
+
+and module_item_desc =
   | Expr of expression
-  | LetDeclaration of bool * value_binding * location
-  | TypeDefintion of type_definition * location
+  | LetDeclaration of bool * value_binding list
+  | TypeDefintion of type_definition
 
 and type_definition = {
   type_name: string;
@@ -68,26 +100,6 @@ and typ_con = {
   con_name: string;
   of_type: ty option
 }
-
-and ty = 
-  | App of tycon * ty list 
-  | Var of string 
-  | Arrow of ty * ty
-  | Tuple of ty list
-  (* | Poly of string list * ty *)
-
-and tycon = 
-  | TInt 
-  | TFloat
-  | TString 
-  | TBool
-  | TUnit 
-  | TArrow 
-  | TyFun of string list * ty
-
-and ty_constraint = 
-  | TyEq of string * ty
-  | VarEq of string * string
 
 let int = App(TInt, [])
 let float = App(TFloat, [])
@@ -135,9 +147,10 @@ let rec string_of_type = function
 
 let rec stringify_module_item mi = match mi with 
     Expr e -> stringify_expr e 
-  | LetDeclaration (is_rec, value_binding, _) -> 
-      Printf.sprintf "LetDecl(%s %s)" (if is_rec then "rec " else "") (stringify_value_binding value_binding)
-  | TypeDefintion (_, _) -> "need to stringify type"
+  | LetDeclaration (is_rec, value_bindings) ->
+    let bindings_str = List.fold_left (fun acc vb -> acc ^ stringify_value_binding vb ^ ", ") "" value_bindings in 
+      Printf.sprintf "LetDecl(%s %s)" (if is_rec then "rec " else "") bindings_str
+  | TypeDefintion _ -> "need to stringify type"
     (* let type_cons = List.fold_left (fun acc x -> acc ^ "|" ^ (stringify_type_con x)) "" td.type_constructors in
       Printf.sprintf "TypeDefinition(%s = %s)" td.type_name type_cons *)
 
@@ -157,10 +170,11 @@ and stringify_expr expr = match expr.expr_desc with
   | Grouping g -> Printf.sprintf "(%s)" (stringify_expr g)
   | BinOp (left, op, right) -> Printf.sprintf "BinOp(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
   | UnOp (op, expr) -> Printf.sprintf "UnOp(%s%s)" op (stringify_expr expr)
-  | Let (is_rec, value_binding, rhs) -> 
+  | Let (is_rec, value_bindings, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
+    let bindings_str = List.fold_left (fun acc vb -> acc ^ stringify_value_binding vb ^ ", ") "" value_bindings in
     let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
-      Printf.sprintf "Let(%s %s %s)" rec_str (stringify_value_binding value_binding) rhs_string
+      Printf.sprintf "Let(%s %s %s)" rec_str bindings_str rhs_string
   | If (condition, then_expr, else_expr) -> 
       let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
         Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
@@ -170,12 +184,20 @@ and stringify_expr expr = match expr.expr_desc with
       Printf.sprintf "PatternMatch(match %s with %s)" (stringify_expr expr) (stringify_match_cases cases)
   | Apply (fn, args) -> 
       Printf.sprintf "Apply(%s, [%s])" (stringify_expr fn) (stringify_expr_list args)
+  | Tuple exprs ->
+    Printf.sprintf "Tuple(%s)" (stringify_expr_list exprs)
+  | Record fields -> 
+    let fields_str = List.fold_left (fun acc f -> acc ^ stringify_record_field f ^ ", ") "" fields in
+      Printf.sprintf "Record{%s}" fields_str
 
 and stringify_value_binding vb = 
   let lhs, rhs = vb.pat, vb.rhs in 
   Printf.sprintf "ValBin(%s = %s)" (stringify_pattern lhs) (stringify_expr rhs)
 
 and stringify_params params = List.fold_left (fun acc x -> acc ^ x ^ " ") "" params
+
+and stringify_record_field field = 
+  Printf.sprintf "%s: %s" field.key (stringify_expr field.value)
 
 and stringify_pattern pattern = match pattern.pattern_desc with 
     ConstInteger i -> string_of_int i 

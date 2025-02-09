@@ -11,11 +11,11 @@ type type_error =
 
 module TypeChecker (F: Error.FORMATTER) = struct 
   let substitute env name = 
-    (match Env.get env name with 
+    match Env.get env name with 
         None -> Ast.Var name
       | Some typ -> 
         match typ with 
-          Env.VarBind b -> b)
+          Env.VarBind b -> b
 
   let rec check_expr env expr = 
     let expr_str = F.display_expr expr in
@@ -39,7 +39,11 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | App(TBool, []) -> 
             let* then_expr_type = check_expr env then_expr in 
             (match else_expr with 
-              None -> Ok then_expr_type
+              None -> 
+                if then_expr_type <> unit then 
+                  Error (Type_mismatch (expr_str ^ "\n" ^ "no else branch (returns unit)"))
+                else
+                  Ok unit
             | Some expr ->  
               let* else_expr_type = check_expr env expr in 
               if else_expr_type = then_expr_type then 
@@ -92,11 +96,11 @@ module TypeChecker (F: Error.FORMATTER) = struct
             | App(TBool, []), _ | _, App(TBool, []) -> Error (Type_mismatch (Error.bin_op_error_str op l r))
             | _, _ -> Ok (App(TBool, [])))
   
-        | "&&" | "||" ->
+        | "&&" | "||" -> 
           (match l_type, r_type with  
             | App(TBool, []), App(TBool, []) -> Ok (App(TBool, []))
             | _, _ ->  Error (Type_mismatch (Error.bin_op_error_str op l r)))
-            
+             
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
       end
@@ -109,7 +113,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | EmptyParens -> 
           if rhs_type = unit then 
             check_expr env body  
-          else 
+          else  
             Error (Type_mismatch "needs to be unit")
         | Ast.ConstIdent i -> 
           let binding = Env.VarBind rhs_type in
@@ -119,9 +123,10 @@ module TypeChecker (F: Error.FORMATTER) = struct
       end
     | _ -> Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
   
-  let check_module_item env = function 
+  let check_module_item env mi = 
+    match mi.module_item_desc with
       Ast.Expr expr -> check_expr env expr
-    | Ast.LetDeclaration (_, value_binding, _) -> 
+    | Ast.LetDeclaration (_, value_binding) -> 
       let* rhs_type = check_expr env value_binding.rhs in
       (match value_binding.pat.pattern_desc with 
       | Wildcard -> Ok unit
