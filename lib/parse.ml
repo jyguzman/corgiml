@@ -16,7 +16,7 @@ module type PARSER = sig
 end
 
 module type TOKEN_STREAM = sig 
-  val init: token list -> unit
+  val init: string -> unit
   val peek: unit -> token option 
   val pos: unit -> (int, parse_error) result
   val advance: unit -> unit 
@@ -36,7 +36,8 @@ module TokenStream : TOKEN_STREAM = struct
   let tokens = ref []
   let prev = ref (Token.make "" Eof "" (-1) (-1) (-1))
   
-  let init toks = tokens := toks 
+  let init source = 
+    tokens := (Lexer.tokenize_source source).tokens 
 
   let peek () = match !tokens with 
     [] -> None 
@@ -45,7 +46,8 @@ module TokenStream : TOKEN_STREAM = struct
   let advance () = match !tokens with 
     [] -> () 
   | x :: xs ->
-    let _ = tokens := xs in prev := x
+    let _ = tokens := xs in 
+      prev := x
 
   let prev () = !prev
 
@@ -464,6 +466,6 @@ end
  
 module ParserImpl = Parser(TokenStream)
 
-let parse tokens = 
-  let _ = TokenStream.init tokens in 
+let parse source = 
+  let _ = TokenStream.init source in 
   ParserImpl.parse_program ()
