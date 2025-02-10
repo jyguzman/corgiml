@@ -50,13 +50,13 @@ and expression_desc =
   | Ident of string 
   | Grouping of expression
 
-  | BinOp of expression * string * expression
-  | UnOp of string * expression 
+  | Binary of expression * string * expression
+  | Unary of string * expression 
 
   | If of expression * expression * expression option
   | Let of bool * value_binding list * expression option
   | Match of expression * case list
-  
+
   | Function of string list * expression * ty option
   | Apply of expression * expression list
   
@@ -168,8 +168,8 @@ and stringify_expr expr = match expr.expr_desc with
   | Bool b -> string_of_bool b
   | Ident i -> Printf.sprintf "Id(%s)" i 
   | Grouping g -> Printf.sprintf "(%s)" (stringify_expr g)
-  | BinOp (left, op, right) -> Printf.sprintf "BinOp(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
-  | UnOp (op, expr) -> Printf.sprintf "UnOp(%s%s)" op (stringify_expr expr)
+  | Binary (left, op, right) -> Printf.sprintf "Binary(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
+  | Unary (op, expr) -> Printf.sprintf "Unary(%s%s)" op (stringify_expr expr)
   | Let (is_rec, value_bindings, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
     let bindings_str = List.fold_left (fun acc vb -> acc ^ stringify_value_binding vb ^ ", ") "" value_bindings in

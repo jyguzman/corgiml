@@ -77,7 +77,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | _ -> 
           Error (Type_mismatch "not a function"))
 
-    | BinOp (l, op, r) -> 
+    | Binary (l, op, r) -> 
       let* l_type = check_expr env l in 
       let* r_type = check_expr env r in 
       begin match op with 
@@ -103,7 +103,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
              
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
-      end
+      end 
 
     | Ast.Let (_, value_binding, body) -> 
       let* rhs_type = check_expr env value_binding.rhs in

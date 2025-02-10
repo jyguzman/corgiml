@@ -338,7 +338,7 @@ let parse_params patterns =
           Ok (List.rev cases)
     in 
       let* case = parse_match_case () in 
-      parse_match_cases_aux [case] 
+        parse_match_cases_aux [case] 
 
   let parse_match () = 
     let match_tok = Stream.prev () in
@@ -387,8 +387,9 @@ let parse_params patterns =
 
   let parse_type_definition () = 
     let* type_tok = Stream.expect "type" in 
-    let* ident = Stream.expect "ident" in 
+    let* ident = upper_ident () in 
     let* _ = Stream.expect "=" in 
+    (* Need to check what type it might be: base type, record ("{"), ADT (another ident), etc.*)
     let* variants = parse_type_constructors ident.lexeme in
     let* pos = Stream.pos () in 
     let location = {
@@ -448,7 +449,7 @@ let parse_params patterns =
     let op = Stream.prev () in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* right = parse_expr bp in 
-    Ok (expr_node (BinOp (left, op.lexeme, right)) (loc_of_bin_op left right))
+    Ok (expr_node (Binary (left, op.lexeme, right)) (loc_of_bin_op left right))
 
   let _ = List.iter 
         (fun op -> Hashtbl.add prec_table op (Led bin_op)) 
