@@ -150,10 +150,23 @@ let tokenize_op lexer c =
   let next = peek lexer 1 in 
   let name, op, lexeme = match c with
 
-    | '(' -> if next = ')' then ("empty_parens", Empty_parens, "()") else ("lparen", L_paren, "(") 
+    | ',' -> ("comma", Comma, ",")
     | ')' -> ("rparen", R_paren, ")") 
+    | ']' -> ("rbracket", R_bracket, "]") 
+    | '{' -> ("lbrace", L_brace, "{")
+    | '}' -> ("rbrace", R_brace, "}")
+    | '_' -> ("wildcard", Wildcard, "_")
+
+    | '>' -> if next = '=' then ("greater_equal", Greater_equal, ">=") else ("greater", Greater, ">")
+    | '=' -> if next = '=' then ("double_equal", Double_equal, "==") else ("single_equal", Single_equal, "=")
+    | '!' -> if next = '=' then ("bang_equal", Bang_equal, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
+
+    | '|' -> if next = '|' then ("double_vertical_bar", Double_vertical_bar, "||") else ("vertical_bar", Vertical_bar, "|") 
+    | '&' -> if next = '&' then ("double_ampersand", Double_ampersand, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
+
+    | '(' -> if next = ')' then ("empty_parens", Empty_parens, "()") else ("lparen", L_paren, "(") 
     | ';' -> if next = ';' then ("double_semicolon", Double_semicolon, ";;") else ("semicolon", Semicolon, ";")
-    | '[' -> if next = ']' then ("brackets", Empty_brackets, "[]") else ("lbracket", L_bracket, "]")
+    | '[' -> if next = ']' then ("brackets", Empty_brackets, "[]") else ("lbracket", L_bracket, "[")
     | ':' -> if next = ':' then ("double_colon", Double_colon, "::") else ("colon", Colon, ":")
     | '*' -> if next = '.' then ("star", Star_dot, "*.") else ("star", Star, "*")
     | '+' -> if next = '.' then ("plus", Plus_dot, "+.") else ("plus", Plus, "+")
@@ -168,14 +181,6 @@ let tokenize_op lexer c =
       '>' -> ("dash_right", Dash_right, "->")
       |'.' -> ("minus_dot", Minus_dot, "-.")
       | _ -> ("minus", Minus, "-"))
-      
-    | '>' -> if next = '=' then ("greater_equal", Greater_equal, ">=") else ("greater", Greater, ">")
-    | '=' -> if next = '=' then ("double_equal", Double_equal, "==") else ("single_equal", Single_equal, "=")
-    | '!' -> if next = '=' then ("bang_equal", Bang_equal, "!=") else Tokenizer.raise_invalid_token "!" lexer.line lexer.col
-
-    | '|' -> if next = '|' then ("double_vertical_bar", Double_vertical_bar, "||") else ("vertical_bar", Vertical_bar, "|") 
-    | '&' -> if next = '&' then ("double_ampersand", Double_ampersand, "&&") else Tokenizer.raise_invalid_token "&" lexer.line lexer.col 
-    | '_' -> ("wildcard", Wildcard, "_")
     
     | _ -> Tokenizer.raise_invalid_token (String.make 1 c) lexer.line lexer.col
   in 

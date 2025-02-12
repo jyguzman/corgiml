@@ -37,6 +37,8 @@ type token_type =
   | R_paren
   | L_bracket 
   | R_bracket
+  | L_brace 
+  | R_brace
   | Semicolon
   | Double_semicolon
 
@@ -48,6 +50,7 @@ type token_type =
   | Vertical_bar
   | Colon 
   | Double_colon
+  | Comma
 
   | Int_annotation
   | Float_annotation 

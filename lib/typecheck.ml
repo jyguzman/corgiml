@@ -1,15 +1,27 @@
-open Ast
+(* open Ast
 open Result
+open Env  *)
 
-let (let*) r f = match r with 
+(* let (let+) r f = match r with 
   Ok v -> f v 
-| Error e -> Error e   
+| Error e -> Error e    *)
 
-type type_error =  
+(* type type_error =  
   | Type_mismatch of string
   | Unrecognized_operation of string
 
-module TypeChecker (F: Error.FORMATTER) = struct 
+
+module TypeVar = struct 
+  type t 
+  let count = ref 0
+
+  let fresh_var () = 
+    let var = "t" ^ string_of_int !count in 
+    let _ = count := !count + 1 
+    in Var var
+end  *)
+
+(* module TypeChecker (F: Error.FORMATTER) = struct 
   let substitute env name = 
     match Env.get env name with 
         None -> Ast.Var name
@@ -25,11 +37,9 @@ module TypeChecker (F: Error.FORMATTER) = struct
     | String _ -> Ok string
     | Bool _ -> Ok bool
     | Ident i -> 
-      (match Env.get env i with 
+      (match Tenv.get env i with 
         None -> Error (Unrecognized_operation (Printf.sprintf "%s\n Could not find a previous decalaration for the variable '%s'" expr_str i))
-      | Some typ -> 
-        match typ with 
-          Env.VarBind b -> Ok b)
+      | Some typ -> Ok typ)
 
     | Grouping g -> check_expr env g
     
@@ -116,8 +126,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
           else  
             Error (Type_mismatch "needs to be unit")
         | Ast.ConstIdent i -> 
-          let binding = Env.VarBind rhs_type in
-          let new_env = Env.add env i binding in
+          let new_env = Tenv.add env i rhs_type in
             check_expr new_env body
         | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat)))
       end
@@ -136,10 +145,9 @@ module TypeChecker (F: Error.FORMATTER) = struct
         else 
           Error (Type_mismatch "needs to be unit")
       | Ast.ConstIdent i -> 
-        let binding = Env.VarBind rhs_type in
-        let _ = Env.add env i binding in
+        let _ = Tenv.add env i rhs_type in
           Ok unit
       | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat))))
     | _ -> Error (Unrecognized_operation "")
 end 
-
+ *)

@@ -32,6 +32,13 @@ let loc token =
   let len = String.length token.lexeme in 
   {col = token.col; line = token.line; start_pos = token.pos; end_pos = token.pos + len - 1}
 
+let token_span (tok_one: token) tok_two =
+  {line = tok_one.line; col = tok_one.col; start_pos = tok_one.pos; end_pos = tok_two.pos}
+
+let expr_span expr_one expr_two =
+  {line = expr_one.loc.line; col = expr_one.loc.col; 
+  start_pos = expr_one.loc.start_pos; end_pos = expr_two.loc.end_pos}
+
 module TokenStream : TOKEN_STREAM = struct 
   let tokens = ref []
   let prev = ref (Token.make "" Eof "" (-1) (-1) (-1))
@@ -100,7 +107,10 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = List.iter (fun op -> set_bp op 20) ["+"; "+."; "-"; "-."]
   let _ = List.iter (fun op -> set_bp op 30) ["*"; "*."; "/"; "/."]
   let _ = List.iter (fun t -> set_bp t 0) ["fun"; "let"; "match"] 
-  let _ = List.iter (fun t -> set_bp t 0) [")"; "->"; "|"; "of"; "in"; "type"; "with"; "then"; "else"; ";;"; "eof"]
+  let _ = List.iter 
+    (fun t -> set_bp t 0) 
+    [","; ")"; "]"; "}"; "->"; "|"; ":"; "of"; "in"; "and";
+    "type"; "with"; "then"; "else"; ";;"; "eof"]
 
   let lbp token =   
     match Hashtbl.find_opt bp_table token.lexeme with 
@@ -165,13 +175,8 @@ module Parser (Stream : TOKEN_STREAM) = struct
           parse_fn_app_aux (arg :: args)
     in 
     let* args = parse_fn_app_aux [] in 
-    let loc = {
-      line = left.loc.line;
-      col = left.loc.col;
-      start_pos = left.loc.start_pos;
-      end_pos = (List.hd args).loc.end_pos
-    } in
-    Ok (expr_node (Apply (left, List.rev args)) loc)
+    let span = expr_span left (List.hd args) in
+    Ok (expr_node (Apply (left, List.rev args)) span)
 
   let upper_ident () = 
     let* curr = Stream.expect ("ident") in 
@@ -183,17 +188,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_grouped () = 
     let opening = Stream.prev () in 
     let* inner = expr () in
-    let* closing = if opening.lexeme = "begin" then 
+    let* closing = if opening.token_type = Begin then 
       Stream.expect "end" 
     else 
-      Stream.expect ")" in
-    let location = {
-      line = opening.line; 
-      col = opening.col; 
-      start_pos = opening.pos; 
-      end_pos = closing.pos
-    } in 
-      Ok (expr_node (Grouping inner) location)
+      Stream.expect ")" 
+    in
+      Ok (expr_node (Grouping inner) (token_span opening closing))
 
   let parse_pattern () = 
     let* next = Stream.take () in 
@@ -244,13 +244,8 @@ let parse_params patterns =
     let* idents = parse_params patterns in 
     let* _ = Stream.expect "->" in
     let* body = expr () in
-    let* pos = Stream.pos () in 
-    let location = {
-      line = fun_token.line; 
-      col = fun_token.col; 
-      start_pos = fun_token.pos; 
-      end_pos = pos
-    } in 
+    let* curr = Stream.take () in 
+    let location = token_span fun_token curr in 
       Ok (expr_node (Function (List.rev idents, body, None)) location)
 
   let parse_value_binding () =
@@ -263,9 +258,9 @@ let parse_params patterns =
     else 
       let* fn_body = expr () in
       let* pos = Stream.pos () in 
-      let* idents = parse_params (List.tl patterns) in 
+      let* params = parse_params (List.tl patterns) in 
       let location = {line = lhs.loc.line; col = lhs.loc.col; start_pos = lhs.loc.start_pos; end_pos = pos} in  
-        Ok (expr_node (Function (List.rev idents, fn_body, None)) location)
+        Ok (expr_node (Function (List.rev params, fn_body, None)) location)
     in 
     let* pos = Stream.pos () in
     let location = {line = lhs.loc.line; col = lhs.loc.col; start_pos = lhs.loc.start_pos; end_pos = pos} in  
@@ -292,13 +287,8 @@ let parse_params patterns =
       Ok None 
     in 
     let* curr = Stream.take () in 
-    let location = {
-      line = prev_tok.line; 
-      col = prev_tok.col; 
-      start_pos = prev_tok.pos; 
-      end_pos = curr.pos} 
-    in  
-      Ok (expr_node (Let (is_rec, value_bindings, body)) location)
+    let span = token_span prev_tok curr in
+      Ok (expr_node (Let (is_rec, value_bindings, body)) span)
 
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
@@ -309,20 +299,76 @@ let parse_params patterns =
       let* expr = expr () in Ok (Some expr)
     else 
       Ok None in  
-    let* pos = Stream.pos () in 
-    let location = {
-      line = if_tok.line; 
-      col = if_tok.col; 
-      start_pos = if_tok.pos; 
-      end_pos = pos
-    } in
+    let* curr = Stream.take () in 
+    let location = token_span if_tok curr in
       Ok (expr_node (If (condition, then_expr, else_expr)) location)
 
+  let parse_list () = 
+    let lbracket = Stream.prev () in 
+    let rec parse_list_aux lst = 
+      let* curr = Stream.take () in 
+      if curr.token_type = R_bracket then 
+        Ok Nil
+      (* else if (Stream.prev()).token_type = Comma then 
+        Error (Unexpected_token "ending of a list requires closing bracket") *)
+      else
+        let* head = expr () in 
+        let* tail = if Stream.accept "," then  
+          parse_list_aux lst
+        else 
+          let* curr = Stream.take () in 
+          if curr.token_type != R_bracket then 
+            Error (Unexpected_token "ending of a list requires closing bracket")
+          else
+            Ok lst
+        in
+          Ok (Cons (head, tail))
+    in
+    let* lst = parse_list_aux Nil in
+    let* rbracket = Stream.expect "]" in 
+      Ok (expr_node (List lst) (token_span lbracket rbracket))
+
   let parse_tuple_expr () = 
-    Ok ()
+    let lparen = Stream.prev () in 
+    let rec parse_tuple_expr_aux tuple = 
+      let* curr = Stream.take () in 
+      if curr.token_type = R_paren then 
+        Ok tuple 
+      else
+        let* expr = expr () in 
+        let tuple = expr :: tuple in 
+        if Stream.accept "," then  
+          parse_tuple_expr_aux tuple
+        else 
+          Ok tuple
+    in
+    let* elements = parse_tuple_expr_aux [] in
+    let* rparen = Stream.expect ")" in 
+      Ok (expr_node (Tuple (List.rev elements)) (token_span lparen rparen))
+
+  let parse_record_expr_field () =
+    let* key = Stream.expect "ident" in 
+    let _ = Stream.expect "=" in 
+    let* value = expr () in 
+      Ok {key = key.lexeme; value = value}
 
   let parse_record_expr () = 
-    Ok ()
+    let lbrace = Stream.prev () in 
+    let rec parse_record_expr_aux fields = 
+      let* curr = Stream.take () in 
+      if curr.token_type = R_brace then 
+        Ok fields 
+      else
+        let* field = parse_record_expr_field () in 
+        let fields = field :: fields in 
+        if Stream.accept "," then  
+          parse_record_expr_aux fields
+        else 
+          Ok fields
+    in
+    let* fields = parse_record_expr_aux [] in 
+    let* rbrace = Stream.expect "}" in 
+    Ok (expr_node (Record (List.rev fields)) (token_span lbrace rbrace))
 
   let parse_match_case () = 
     let* pattern = parse_pattern () in 
@@ -347,14 +393,9 @@ let parse_params patterns =
     let* match_expr = expr () in 
     let* _ = Stream.expect "with" in
     let* cases = parse_match_cases () in 
-    let* pos = Stream.pos () in
-    let location = {
-      line = match_tok.line; 
-      col = match_tok.col; 
-      start_pos = match_tok.pos; 
-      end_pos = pos
-    } in
-      Ok (expr_node (Match(match_expr, cases)) location)
+    let* curr = Stream.take () in
+    let span = token_span match_tok curr in
+      Ok (expr_node (Match(match_expr, cases)) span)
 
   let parse_type_con_type token = 
     match token.lexeme with 
@@ -393,16 +434,11 @@ let parse_params patterns =
     let* _ = Stream.expect "=" in 
     (* Need to check what type it might be: base type, record ("{"), ADT (another ident), etc.*)
     let* variants = parse_type_constructors ident.lexeme in
-    let* pos = Stream.pos () in 
-    let location = {
-      line = type_tok.line;
-      col = type_tok.col;
-      start_pos = type_tok.pos;
-      end_pos = pos
-    } in
+    let* curr = Stream.take () in 
+    let span = token_span type_tok curr in
       Ok {
         module_item_desc = TypeDefintion {type_name = ident.lexeme; type_constructors = variants}; 
-        module_item_loc = location
+        module_item_loc = span
       }
 
   let parse_module_item () =
@@ -433,25 +469,18 @@ let parse_params patterns =
     in 
       parse_program_aux []
 
-  let loc_of_bin_op left right = {
-    line = left.loc.line; 
-    col = left.loc.col; 
-    start_pos = left.loc.start_pos; 
-    end_pos = right.loc.end_pos
-  }
-
   let make_binary lhs =  
     let op = Stream.prev () in
     let op_expr = {expr_desc = Ident op.lexeme; loc = loc op} in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* rhs = parse_expr bp in 
-    Ok (expr_node (Apply(op_expr, [lhs; rhs])) (loc_of_bin_op lhs rhs))
+    Ok (expr_node (Apply(op_expr, [lhs; rhs])) (expr_span lhs rhs))
 
   let bin_op left = 
     let op = Stream.prev () in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* right = parse_expr bp in 
-    Ok (expr_node (Binary (left, op.lexeme, right)) (loc_of_bin_op left right))
+    Ok (expr_node (Binary (left, op.lexeme, right)) (expr_span left right))
 
   let _ = List.iter 
         (fun op -> Hashtbl.add prec_table op (Led bin_op)) 
@@ -459,8 +488,9 @@ let parse_params patterns =
   
   let _ = 
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
-      [("(", Nud parse_grouped); ("begin", Nud parse_grouped); ("if", Nud parse_if_expr); 
-      ("let", Nud parse_let); ("match", Nud parse_match); 
+      [("(", Nud parse_grouped); ("begin", Nud parse_grouped); 
+      ("[", Nud parse_list); ("(", Nud parse_tuple_expr); ("{", Nud parse_record_expr);
+      ("if", Nud parse_if_expr); ("let", Nud parse_let); ("match", Nud parse_match); 
       ("fun", Nud parse_function);]
 end
  

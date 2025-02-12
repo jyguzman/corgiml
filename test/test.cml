@@ -1,3 +1,3 @@
-2
-+ 
-3
+let x = [1, 2, 4,] and y = 5 
+let tup = ("hello", 5.8, 10)
+let w = {name = "jordie", age = 25}
