@@ -119,7 +119,7 @@ end  *)
       let* rhs_type = check_expr env value_binding.rhs in
       let* body = match body with None -> Error (Unrecognized_operation "body empty") | Some b -> Ok b in
       begin match value_binding.pat.pattern_desc with 
-          Wildcard -> check_expr env body
+          Any -> check_expr env body
         | EmptyParens -> 
           if rhs_type = unit then 
             check_expr env body  
@@ -138,7 +138,7 @@ end  *)
     | Ast.LetDeclaration (_, value_binding) -> 
       let* rhs_type = check_expr env value_binding.rhs in
       (match value_binding.pat.pattern_desc with 
-      | Wildcard -> Ok unit
+      | Any -> Ok unit
       | EmptyParens -> 
         if rhs_type = unit then 
           Ok unit 

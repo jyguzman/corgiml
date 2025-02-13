@@ -1,3 +1,5 @@
-let x = [1, 2, 4,] and y = 5 
+let x = [1, 2, 4,] and y = 5 in x + y 
 let tup = ("hello", 5.8, 10)
+let expr = (2 + 5 * (10 - 7))
+let tup_exprs = (1 + 6, ("hello", "world"))
 let w = {name = "jordie", age = 25}

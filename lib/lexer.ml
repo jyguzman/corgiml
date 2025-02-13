@@ -153,7 +153,7 @@ let tokenize_op lexer c =
     | ',' -> ("comma", Comma, ",")
     | ')' -> ("rparen", R_paren, ")") 
     | ']' -> ("rbracket", R_bracket, "]") 
-    | '{' -> ("lbrace", L_brace, "{")
+    | '{' -> ("lbrace", L_brace, "{") 
     | '}' -> ("rbrace", R_brace, "}")
     | '_' -> ("wildcard", Wildcard, "_")
 

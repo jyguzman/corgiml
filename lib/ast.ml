@@ -27,15 +27,16 @@ type pattern = {
 }
 
 and pattern_desc = 
-  | ConstInteger of int 
-  | ConstFloat of float 
-  | ConstString of string 
-  | ConstIdent of string
+  | Const_integer of int 
+  | Const_float of float 
+  | Const_string of string 
+  | Const_ident of string
+  | Pat_tuple of pattern list
   | True
   | False
-  | EmptyBrackets 
-  | EmptyParens
-  | Wildcard
+  | Empty_brackets 
+  | Empty_parens
+  | Any (* _ *)
 
 type expression = {
   expr_desc: expression_desc;
@@ -171,7 +172,7 @@ and stringify_expr expr = match expr.expr_desc with
   | Unary (op, expr) -> Printf.sprintf "Unary(%s%s)" op (stringify_expr expr)
   | Let (is_rec, value_bindings, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
-    let bindings_str = List.fold_left (fun acc vb -> acc ^ stringify_value_binding vb ^ ", ") "" value_bindings in
+    let bindings_str = stringify_items value_bindings stringify_value_binding in
     let rhs_string = (match rhs with None -> "" | Some e -> " in " ^ stringify_expr e) in  
       Printf.sprintf "Let(%s %s %s)" rec_str bindings_str rhs_string
   | If (condition, then_expr, else_expr) -> 
@@ -209,15 +210,17 @@ and stringify_record_field field =
   Printf.sprintf "%s: %s" field.key (stringify_expr field.value)
 
 and stringify_pattern pattern = match pattern.pattern_desc with 
-    ConstInteger i -> string_of_int i 
-  | ConstFloat f -> string_of_float f 
-  | ConstString s -> s 
-  | ConstIdent i -> Printf.sprintf "Id(%s)" i 
+    Const_integer i -> string_of_int i 
+  | Const_float f -> string_of_float f 
+  | Const_string s -> s 
+  | Const_ident i -> Printf.sprintf "Id(%s)" i 
+  | Pat_tuple patterns -> 
+    Printf.sprintf "Tuple(%s)" (stringify_items patterns stringify_pattern)
   | True -> "true"
   | False -> "false" 
-  | EmptyBrackets -> "[]"
-  | EmptyParens -> "()"
-  | Wildcard -> "_"
+  | Empty_brackets -> "[]"
+  | Empty_parens -> "()"
+  | Any -> "_"
 
 and stringify_patterns patterns = 
   stringify_items patterns stringify_pattern

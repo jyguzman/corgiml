@@ -11,10 +11,6 @@ let (let*) r f = match r with
   Ok v -> f v 
 | Error e -> Error e 
 
-module type PARSER = sig 
-  val parse: unit -> (token, parse_error) result
-end
-
 module type TOKEN_STREAM = sig 
   val init: string -> unit
   val peek: unit -> token option 
@@ -185,6 +181,37 @@ module Parser (Stream : TOKEN_STREAM) = struct
       'A'..'Z' -> Ok curr
       | _ -> Error (Unexpected_token "Expected an identifier starting with an upper case letter") 
   
+
+  let parse_tuple_expr ?(opening_token=Stream.prev()) first = 
+    let rec parse_tuple_expr_aux items = 
+      let* curr = Stream.take () in 
+      if curr.token_type = R_paren then 
+        Ok items 
+      else
+        let* expr = expr () in 
+        let tuple = expr :: items in 
+        if Stream.accept "," then  
+          parse_tuple_expr_aux tuple
+        else 
+          Ok tuple
+    in
+    let init = match first with Some expr -> [expr] | None -> [] in
+    let* elements = parse_tuple_expr_aux init in
+    let* rparen = Stream.expect ")" in 
+      Ok (expr_node (Tuple (List.rev elements)) (token_span opening_token rparen))
+
+  let parse_paren_expr () = 
+    let opening = Stream.prev () in 
+    let* inner = expr () in
+    let* next = Stream.take () in 
+    let grouped_expr = expr_node (Grouping inner) (token_span opening next) in
+    match next.token_type with 
+        End -> let _ = Stream.expect "end" in Ok grouped_expr
+      | R_paren -> let _ = Stream.expect ")" in Ok grouped_expr
+      | Comma -> let _ = Stream.advance () in 
+          parse_tuple_expr ~opening_token:next (Some inner)
+      | _ -> Error (Unexpected_token ("Expected 'end', ')', or ',' but got " ^ stringify_token next)) 
+  
   let parse_grouped () = 
     let opening = Stream.prev () in 
     let* inner = expr () in
@@ -199,19 +226,21 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* next = Stream.take () in 
     let loc = loc next in 
     match next.token_type with  
-      Integer i -> Ok {pattern_desc = ConstInteger i; loc = loc}
-    | Decimal d -> Ok {pattern_desc = ConstFloat d; loc = loc}
-    | String s -> Ok {pattern_desc = ConstString s; loc = loc}
-    | Ident i -> Ok {pattern_desc = ConstIdent i; loc = loc}
+      Integer i -> Ok {pattern_desc = Const_integer i; loc = loc}
+    | Decimal d -> Ok {pattern_desc = Const_float d; loc = loc}
+    | String s -> Ok {pattern_desc = Const_string s; loc = loc}
+    | Ident i -> Ok {pattern_desc = Const_ident i; loc = loc}
     | True -> Ok {pattern_desc = True; loc = loc}
     | False -> Ok {pattern_desc = False; loc = loc}
-    | Empty_parens -> Ok {pattern_desc = EmptyParens; loc = loc}
-    | Wildcard -> Ok {pattern_desc = Wildcard; loc = loc}
+    | Empty_brackets -> Ok {pattern_desc = Empty_brackets; loc = loc}
+    | Empty_parens -> Ok {pattern_desc = Empty_parens; loc = loc}
+    | Wildcard -> Ok {pattern_desc = Any; loc = loc}
     | _ -> Error (Unexpected_token ("expected a pattern but got " ^ (stringify_token next)))
 
   let parse_patterns () = 
     let rec parse_patterns_aux patterns = 
-      if Stream.accept_any ["ident"; "true"; "false"; "()"; "_"] then 
+      if Stream.accept_any ["integer"; "decimal"; "string"; "ident"; 
+        "true"; "false"; "()"; "_"; "[]"] then 
         let* pattern = parse_pattern () in
         let _ = Stream.advance () in
           parse_patterns_aux (pattern :: patterns)
@@ -230,7 +259,7 @@ let parse_params patterns =
       then Ok idents 
     else 
       let* ident = match (List.hd patterns).pattern_desc with 
-        ConstIdent i -> Ok i
+        Const_ident i -> Ok i
       | _ -> 
         Error (Unexpected_token ("function param must be an identifier"))
       in             
@@ -407,7 +436,7 @@ let parse_params patterns =
       | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token token)))
 
   let parse_type_constructor type_def_name = 
-    let* ident = Stream.expect "ident" in 
+    let* ident = upper_ident () in 
     let* typ = if Stream.accept "of" then
       let* annotation = Stream.expect "annotation" in 
       let* typ = parse_type_con_type annotation in 
@@ -488,8 +517,8 @@ let parse_params patterns =
   
   let _ = 
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
-      [("(", Nud parse_grouped); ("begin", Nud parse_grouped); 
-      ("[", Nud parse_list); ("(", Nud parse_tuple_expr); ("{", Nud parse_record_expr);
+      [("(", Nud parse_paren_expr); ("begin", Nud parse_grouped); 
+      ("[", Nud parse_list); ("{", Nud parse_record_expr);
       ("if", Nud parse_if_expr); ("let", Nud parse_let); ("match", Nud parse_match); 
       ("fun", Nud parse_function);]
 end
