@@ -1,153 +1,200 @@
-(* open Ast
-open Result
-open Env  *)
+open Ast
+open Env  
 
-(* let (let+) r f = match r with 
-  Ok v -> f v 
-| Error e -> Error e    *)
-
-(* type type_error =  
+type type_error =  
   | Type_mismatch of string
   | Unrecognized_operation of string
 
+let (let*) r f = match r with 
+  Ok v -> f v 
+| Error e -> Error e   
 
-module TypeVar = struct 
-  type t 
-  let count = ref 0
+module Var = struct 
+  let count = ref 0 
 
-  let fresh_var () = 
-    let var = "t" ^ string_of_int !count in 
-    let _ = count := !count + 1 
-    in Var var
-end  *)
+  let fresh () = 
+    let var = Printf.sprintf "a%d" !count in 
+    let _ = count := !count + 1 in 
+    Var var
+end
 
-(* module TypeChecker (F: Error.FORMATTER) = struct 
-  let substitute env name = 
-    match Env.get env name with 
-        None -> Ast.Var name
-      | Some typ -> 
-        match typ with 
-          Env.VarBind b -> b
 
-  let rec check_expr env expr = 
+
+type type_constraint = 
+  | BinaryOpConstraint of expression * ty * ty * ty (* left type, right type, expected type *)
+  | UnaryOpConstraint of expression * ty * ty (* operand type, expected type *)
+  
+  | IfConditionConstraint of expression * ty (* condition of an if expression must be Bool *)
+  | IfBranchesConstraint of expression * ty * ty (* these types must match *)
+
+  (* the type of the scrutinee and the types of the patterns. Patterns must be scrutinee's type *)
+  | MatchPatternConstraint of expression * ty * ty list 
+
+  (* The types of each match case result. All cases must result in the same. Assume the first type is correct. *)
+  | MatchResultConstraint of expression * ty list
+
+let unify _env = function 
+  | App("Int", []), App("Int", []) 
+  | App("Float", []), App("Float", []) 
+  | App("String", []), App("String", []) 
+  | App("Bool", []), App("Bool", [])
+  | App("Unit", []), App("Unit", []) -> Ok ()
+  
+  | _ -> Ok ()
+
+let type_of_pattern env pattern = 
+  match pattern.pattern_desc with 
+    Const_integer _ -> Ok int 
+  | Const_float _ -> Ok float 
+  | Const_string _ -> Ok string 
+  | True | False -> Ok bool 
+  | Empty_parens -> Ok unit 
+  | Const_ident name -> 
+    (match Type_env.lookup name env with 
+      | Some ty -> Ok ty
+      | None -> 
+        Error (Unrecognized_operation (Printf.sprintf "Could not find a previous declaration for the variable '%s'" name)))
+  | Any -> Ok Any
+  | _ -> Error (Type_mismatch (Printf.sprintf "this is not a valid pattern"))
+
+module TypeChecker (F: Error.FORMATTER) = struct 
+
+  let rec check_bindings env value_bindings = 
+    let rec check_bindings_aux checked_bindings rest = 
+      if List.length rest = 0 then 
+        Ok checked_bindings 
+      else
+        let vb = List.hd rest in 
+        let* typ, _ = check_expr env vb.rhs in 
+        match vb.pat.pattern_desc with 
+          | Const_ident i -> 
+            check_bindings_aux ((i, typ) :: checked_bindings) (List.tl rest)
+          | Any -> 
+            check_bindings_aux checked_bindings (List.tl rest)
+          | Empty_parens -> 
+            if typ = unit then 
+              check_bindings_aux checked_bindings (List.tl rest)
+            else 
+              Error (Type_mismatch "needs to be unit")
+          | _ -> 
+            Error (Type_mismatch "unrecognized pattern")
+    in 
+    let* bindings = check_bindings_aux [] value_bindings in 
+      Ok (Type_env.add env bindings)
+
+  and check_expr env expr = 
     let expr_str = F.display_expr expr in
     match expr.Ast.expr_desc with 
-    | Integer _ -> Ok int 
-    | Float _ -> Ok float
-    | String _ -> Ok string
-    | Bool _ -> Ok bool
-    | Ident i -> 
-      (match Tenv.get env i with 
-        None -> Error (Unrecognized_operation (Printf.sprintf "%s\n Could not find a previous decalaration for the variable '%s'" expr_str i))
-      | Some typ -> Ok typ)
+    | Integer _ -> Ok (int, [])
+    | Float _ -> Ok (float, [])
+    | String _ -> Ok (string, [])
+    | Bool _ -> Ok (bool, [])
+    | Ident name -> 
+      (match Type_env.lookup name env with 
+        | Some ty -> Ok (ty, [])
+        | None -> 
+          Error (Unrecognized_operation (Printf.sprintf "%s\n Could not find a previous declaration for the variable '%s'" expr_str name)))
 
-    | Grouping g -> check_expr env g
-    
-    | If (condition, then_expr, else_expr) ->  
-      let* cond_type = check_expr env condition in 
-      begin match cond_type with 
-        | App(TBool, []) -> 
-            let* then_expr_type = check_expr env then_expr in 
-            (match else_expr with 
-              None -> 
-                if then_expr_type <> unit then 
-                  Error (Type_mismatch (expr_str ^ "\n" ^ "no else branch (returns unit)"))
-                else
-                  Ok unit
-            | Some expr ->  
-              let* else_expr_type = check_expr env expr in 
-              if else_expr_type = then_expr_type then 
-                Ok else_expr_type 
-              else 
-                Error (Type_mismatch (expr_str ^ "\n" ^ "if then and else must be same type")))
-        | _ -> 
-          Error (Type_mismatch (expr_str ^ "\n" ^ "if condition must be boolean"))
-      end
+    | Grouping g -> check_expr env g 
 
-    (* | Function (idents, body, _) -> 
-      let idents = in
-      Ok int *)
+    (* | Function (params, body, _) -> 
+      let vars = List.map (fun p -> (p, Var.fresh ())) params in 
+      let env = Type_env.add env vars in 
+      let* ret = check_expr env body in 
+        Arrow() *)
 
-    | Apply(fn, args) ->
-      let* fn_type = check_expr env fn in 
-      let _ = print_endline ("fn type: " ^ string_of_type fn_type) in
-      let _ = print_endline ("fn: " ^ stringify_expr fn) in
-      (match fn_type with 
-        | App(TArrow, [first; _]) ->
-            begin match args with 
-                [] -> Error (Type_mismatch "not enough args")
-              | arg :: rest_args -> 
-                let* arg_type = check_expr env arg in
-                if arg_type <> first then 
-                  Error (Type_mismatch (expr_str ^ "types don't match"))
-                else 
-                  let app = Apply({expr_desc = Apply(fn, [arg]); loc = fn.loc}, rest_args) in
-                  check_expr env {expr_desc = app; loc = fn.loc}
-            end
-        | _ -> 
-          Error (Type_mismatch "not a function"))
+    | If (cond, then_exp, else_expr) -> 
+      let* cond_typ, cond_cons = check_expr env cond in 
+      let* then_typ, then_cons = check_expr env then_exp in
+      let* else_typ, else_cons = match else_expr with 
+        None -> Ok (unit, [])
+      | Some expr -> check_expr env expr
+      in 
+      let constraints = cond_cons @ then_cons @ else_cons in 
+      let cond_con = IfConditionConstraint (expr, cond_typ) in 
+      let if_con = IfBranchesConstraint (expr, then_typ, else_typ) in 
+        Ok (then_typ, constraints @ (if_con :: [cond_con])) 
+
+    (* | Match (exp, cases) -> 
+      let* exp_typ, exp_cons = check_expr env expr in  *)
 
     | Binary (l, op, r) -> 
-      let* l_type = check_expr env l in 
-      let* r_type = check_expr env r in 
+      let* l_typ, l_cons = check_expr env l in 
+      let* r_typ, r_cons = check_expr env r in 
+      let constraints = l_cons @ r_cons in
       begin match op with 
-        "+" | "-" | "*" | "/" ->
-          (match l_type, r_type with 
-            | App(TInt, []), App(TInt, []) -> Ok (App(TInt, []))
-            | _, _ -> Error (Type_mismatch (expr_str ^ Error.bin_op_error_str op l r)))
-  
-        | "+." | "-." | "*." | "/." ->
-          (match l_type, r_type with 
-            | App(TFloat, []), App(TFloat, []) -> Ok (App(TFloat, []))
-            | _, _ -> Error (Type_mismatch (Error.bin_op_error_str op l r))) 
-  
+        "+" | "-" | "*" | "/" -> 
+          Ok (int, BinaryOpConstraint (expr, l_typ, r_typ, int) :: constraints)
+
+        | "+." | "-." | "*." | "/." -> 
+          Ok (float, BinaryOpConstraint (expr, l_typ, r_typ, float) :: constraints)
+
         | "<" | "<=" | "=" | ">" | ">=" | "<>" ->
-          (match l_type, r_type with  
-            | App(TBool, []), _ | _, App(TBool, []) -> Error (Type_mismatch (Error.bin_op_error_str op l r))
-            | _, _ -> Ok (App(TBool, [])))
-  
+          (* Left & right types must be equal, so just assume the left has correct type *)
+          Ok (l_typ, BinaryOpConstraint (expr, l_typ, r_typ, l_typ) :: constraints)
+
         | "&&" | "||" -> 
-          (match l_type, r_type with  
-            | App(TBool, []), App(TBool, []) -> Ok (App(TBool, []))
-            | _, _ ->  Error (Type_mismatch (Error.bin_op_error_str op l r)))
-             
+          Ok (bool, BinaryOpConstraint (expr, l_typ, r_typ, bool) :: constraints)
+
+        | "^" -> 
+          Ok (string, BinaryOpConstraint (expr, l_typ, r_typ, string) :: constraints)
+
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
       end 
 
-    | Ast.Let (_, value_binding, body) -> 
-      let* rhs_type = check_expr env value_binding.rhs in
-      let* body = match body with None -> Error (Unrecognized_operation "body empty") | Some b -> Ok b in
-      begin match value_binding.pat.pattern_desc with 
-          Any -> check_expr env body
-        | EmptyParens -> 
-          if rhs_type = unit then 
-            check_expr env body  
-          else  
-            Error (Type_mismatch "needs to be unit")
-        | Ast.ConstIdent i -> 
-          let new_env = Tenv.add env i rhs_type in
-            check_expr new_env body
-        | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat)))
-      end
-    | _ -> Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
+    (* | Ast.Let (_, value_bindings, body) -> 
+      let* bindings = check_bindings env value_bindings in
+      let* body = match body with 
+        None -> Error (Unrecognized_operation "body empty") 
+      | Some b -> Ok b 
+      in
+        check_expr bindings body *)
+
+    | _ -> 
+      Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
+
+  (* let rec generate_constraints env expr = match expr.expr_desc with 
+    | Integer _ -> Ok (int, []) 
+    | Float _ -> Ok (float, [])
+    | String _ -> Ok (string, [])
+    | Bool _ -> Ok (bool, [])
+    | Ident _ -> 
+      let* typ = check_expr env expr in Ok (typ, [])
+    | If (c, l, _) -> 
+      let* c, c_cons = generate_constraints env c in 
+      let cond_constr = [Eq (c, bool)] in 
+      let* l, l_cons = generate_constraints env l in 
+      let branch_constraints = l_cons in
+      let constraints = List.append cond_constr branch_constraints in
+      (* let* r, r_cons = generate_constraints env r in  *)
+        Ok (l, constraints)
+    | _ -> 
+      Error (Unrecognized_operation "gen_con: not an expr") *)
   
-  let check_module_item env mi = 
+  (* let check_module_item env mi = 
     match mi.module_item_desc with
-      Ast.Expr expr -> check_expr env expr
-    | Ast.LetDeclaration (_, value_binding) -> 
-      let* rhs_type = check_expr env value_binding.rhs in
-      (match value_binding.pat.pattern_desc with 
-      | Any -> Ok unit
-      | EmptyParens -> 
-        if rhs_type = unit then 
-          Ok unit 
-        else 
-          Error (Type_mismatch "needs to be unit")
-      | Ast.ConstIdent i -> 
-        let _ = Tenv.add env i rhs_type in
-          Ok unit
-      | _ -> Error (Unrecognized_operation ("Unrecognized pattern " ^ (Ast.stringify_pattern value_binding.pat))))
-    | _ -> Error (Unrecognized_operation "")
+      Ast.Expr expr -> 
+        let* _, _ = check_expr env expr in Ok env
+    | Ast.LetDeclaration (_, value_bindings) -> 
+        check_bindings env value_bindings 
+    | _ -> 
+      Error (Unrecognized_operation "not valid module binding")
+
+  let check_program init_env module_items = 
+    let rec check_program_aux env module_items = 
+      if List.length module_items = 0 then 
+        Ok ()
+      else
+        let current_mi = List.hd module_items in 
+        let* new_env = check_module_item env current_mi in 
+        check_program_aux new_env (List.tl module_items)
+    in 
+      check_program_aux init_env module_items *)
+
+  (* and get_case_constraints cases = 
+    let pat, expr = ca.lhs, match_case.rhs in  *)
+
+      
 end 
- *)
+

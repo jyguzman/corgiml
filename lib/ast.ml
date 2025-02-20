@@ -6,20 +6,11 @@ type location = {
 }
 
 type ty = 
-  | App of tycon * ty list 
+  | App of string * ty list 
   | Var of string 
   | Arrow of ty * ty
-  | Tuple of ty list
-  (* | Poly of string list * ty *)
-
-and tycon = 
-  | TInt 
-  | TFloat
-  | TString 
-  | TBool
-  | TUnit 
-  | TArrow 
-  | TyFun of string list * ty
+  | Poly of string list * ty
+  | Any (* _ (wildcard) *)
 
 type pattern = {
   pattern_desc: pattern_desc;
@@ -31,7 +22,6 @@ and pattern_desc =
   | Const_float of float 
   | Const_string of string 
   | Const_ident of string
-  | Pat_tuple of pattern list
   | True
   | False
   | Empty_brackets 
@@ -75,7 +65,7 @@ and case = {
 and value_binding = {
   pat: pattern;
   rhs: expression;
-  val_constraint: ty option; (* eventually need to parse type constraints *)
+  value_constraint: ty option; (* eventually need to parse type constraints *)
   location: location;
 }
 
@@ -92,55 +82,22 @@ type module_item = {
 and module_item_desc =
   | Expr of expression
   | LetDeclaration of bool * value_binding list
-  | TypeDefintion of type_definition
+  | TypeDefintion of string * string list * type_kind
 
-and type_definition = {
-  type_name: string;
-  type_constructors: typ_con list
+and type_kind = 
+  | Variant of constr_decl list 
+  | Record of (string * ty) list 
+
+and constr_decl = {
+  name: string;
+  types: ty list;
 }
 
-and typ_con = {
-  type_def_name: string;
-  con_name: string;
-  of_type: ty option
-}
-
-let int = App(TInt, [])
-let float = App(TFloat, [])
-let bool = App(TBool, [])
-let string = App(TString, [])
-let unit = App(TUnit, [])
-
-type typ_expr = 
-  | Texp_base of string 
-  | Texp_list of typ_expr list
-  | Texp_tup of typ_expr list 
-  | Texp_arrow of typ_expr * typ_expr
-  | Texp_function of typ_expr list
-
-let string_of_tycon = function
-  | TInt -> "int"
-  | TFloat -> "float"
-  | TString -> "string"
-  | TBool -> "bool"
-  | TUnit -> "unit"
-  | TArrow -> "arrow"
-  | TyFun (_, _) -> "fun"
-
-let rec string_of_type = function 
-  | App (tycon, types) -> 
-    begin match tycon, types with 
-        TInt, [] -> "int"
-      | TFloat, [] -> "float"
-      | TString, [] -> "string"
-      | TBool, [] -> "bool"
-      | TUnit, [] -> "unit"
-      | TArrow, [l; r] -> Printf.sprintf "%s -> %s" (string_of_type l) (string_of_type r)
-      | _, _ -> ""
-    end
-  | Var (name) -> Printf.sprintf "Var(%s)" name 
-  | Arrow (l, r) -> Printf.sprintf "Arrow(%s -> %s)" (string_of_type l) (string_of_type r)
-  | Tuple (tys) -> Printf.sprintf "Tuple(%s)" (List.fold_left (fun acc ty -> acc ^ string_of_type ty ^ ", ") "" tys)
+let int = App("Int", [])
+let float = App("Float", [])
+let bool = App("Bool", [])
+let string = App("String", [])
+let unit = App("Unit", [])
 
 let stringify_items ?(newline = false) items stringify_item  = 
   let stringifier = (fun (curr_list_str, num_items_left) item ->
@@ -151,7 +108,27 @@ let stringify_items ?(newline = false) items stringify_item  =
   let str, _ = (List.fold_left stringifier ("", List.length items) items) in
   Printf.sprintf "%s" str
 
-let rec stringify_module_item mi = match mi.module_item_desc with 
+let int_list = App("List", [App("Int", [])])
+
+let rec string_of_type = function 
+  | App (name, types) -> 
+    begin match name, types with 
+        "Int", [] -> "Int"
+      | "Float", [] -> "Float"
+      | "String", [] -> "String"
+      | "Bool", [] -> "Bool"
+      | "Unit", [] -> "Unit"
+      | "List", _ -> 
+        Printf.sprintf "[%s]" (stringify_items types string_of_type)
+      | _, _ -> ""
+    end
+  | Var name -> Printf.sprintf "Var(%s)" name 
+  | Arrow (left, right) -> 
+    Printf.sprintf "Arrow(%s -> %s)" (string_of_type left) (string_of_type right)
+  | Poly (vars, ty) -> 
+    Printf.sprintf "Poly([%s], %s)" (stringify_items vars (fun s -> s)) (string_of_type ty)
+
+and stringify_module_item mi = match mi.module_item_desc with 
     Expr e -> stringify_expr e
   | LetDeclaration (is_rec, value_bindings) ->
     let bindings_str = stringify_items value_bindings stringify_value_binding in 
@@ -214,8 +191,6 @@ and stringify_pattern pattern = match pattern.pattern_desc with
   | Const_float f -> string_of_float f 
   | Const_string s -> s 
   | Const_ident i -> Printf.sprintf "Id(%s)" i 
-  | Pat_tuple patterns -> 
-    Printf.sprintf "Tuple(%s)" (stringify_items patterns stringify_pattern)
   | True -> "true"
   | False -> "false" 
   | Empty_brackets -> "[]"
