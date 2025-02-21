@@ -18,8 +18,6 @@ module Var = struct
     Var var
 end
 
-
-
 type type_constraint = 
   | BinaryOpConstraint of expression * ty * ty * ty (* left type, right type, expected type *)
   | UnaryOpConstraint of expression * ty * ty (* operand type, expected type *)
@@ -49,10 +47,10 @@ let type_of_pattern env pattern =
   | Const_string _ -> Ok string 
   | True | False -> Ok bool 
   | Empty_parens -> Ok unit 
-  | Const_ident name -> 
+  | Const_ident name ->  
     (match Type_env.lookup name env with 
       | Some ty -> Ok ty
-      | None -> 
+      | None ->  
         Error (Unrecognized_operation (Printf.sprintf "Could not find a previous declaration for the variable '%s'" name)))
   | Any -> Ok Any
   | _ -> Error (Type_mismatch (Printf.sprintf "this is not a valid pattern"))
@@ -60,27 +58,28 @@ let type_of_pattern env pattern =
 module TypeChecker (F: Error.FORMATTER) = struct 
 
   let rec check_bindings env value_bindings = 
-    let rec check_bindings_aux checked_bindings rest = 
+    let rec check_bindings_aux checked_bindings constraints rest = 
       if List.length rest = 0 then 
-        Ok checked_bindings 
+        Ok (checked_bindings, constraints)
       else
         let vb = List.hd rest in 
-        let* typ, _ = check_expr env vb.rhs in 
+        let* typ, cons = check_expr env vb.rhs in 
+        let constraints = constraints @ cons in
         match vb.pat.pattern_desc with 
           | Const_ident i -> 
-            check_bindings_aux ((i, typ) :: checked_bindings) (List.tl rest)
+            check_bindings_aux ((i, typ) :: checked_bindings) constraints (List.tl rest)
           | Any -> 
-            check_bindings_aux checked_bindings (List.tl rest)
+            check_bindings_aux checked_bindings constraints (List.tl rest)
           | Empty_parens -> 
             if typ = unit then 
-              check_bindings_aux checked_bindings (List.tl rest)
+              check_bindings_aux checked_bindings constraints (List.tl rest)
             else 
               Error (Type_mismatch "needs to be unit")
           | _ -> 
             Error (Type_mismatch "unrecognized pattern")
     in 
-    let* bindings = check_bindings_aux [] value_bindings in 
-      Ok (Type_env.add env bindings)
+    let* bindings, constraints = check_bindings_aux [] [] value_bindings in 
+      Ok (Type_env.add env bindings, constraints)
 
   and check_expr env expr = 
     let expr_str = F.display_expr expr in
@@ -113,7 +112,8 @@ module TypeChecker (F: Error.FORMATTER) = struct
       let constraints = cond_cons @ then_cons @ else_cons in 
       let cond_con = IfConditionConstraint (expr, cond_typ) in 
       let if_con = IfBranchesConstraint (expr, then_typ, else_typ) in 
-        Ok (then_typ, constraints @ (if_con :: [cond_con])) 
+        Ok (then_typ, constraints @ (if_con :: [cond_con]))  
+          (* assume the true result has the correct type *)
 
     (* | Match (exp, cases) -> 
       let* exp_typ, exp_cons = check_expr env expr in  *)
@@ -121,35 +121,31 @@ module TypeChecker (F: Error.FORMATTER) = struct
     | Binary (l, op, r) -> 
       let* l_typ, l_cons = check_expr env l in 
       let* r_typ, r_cons = check_expr env r in 
-      let constraints = l_cons @ r_cons in
-      begin match op with 
-        "+" | "-" | "*" | "/" -> 
-          Ok (int, BinaryOpConstraint (expr, l_typ, r_typ, int) :: constraints)
-
+      let* expected_typ = begin match op with 
+          "+" | "-" | "*" | "/" -> 
+            Ok int
         | "+." | "-." | "*." | "/." -> 
-          Ok (float, BinaryOpConstraint (expr, l_typ, r_typ, float) :: constraints)
-
-        | "<" | "<=" | "=" | ">" | ">=" | "<>" ->
-          (* Left & right types must be equal, so just assume the left has correct type *)
-          Ok (l_typ, BinaryOpConstraint (expr, l_typ, r_typ, l_typ) :: constraints)
-
+          Ok float
+        | "<" | "<=" | "=" | ">" | ">=" | "<>" 
+          -> Ok l_typ (* Left & right types must be equal, so just assume the left has correct type *)
         | "&&" | "||" -> 
-          Ok (bool, BinaryOpConstraint (expr, l_typ, r_typ, bool) :: constraints)
-
+          Ok bool
         | "^" -> 
-          Ok (string, BinaryOpConstraint (expr, l_typ, r_typ, string) :: constraints)
-
+          Ok string
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
       end 
+      in
+        Ok (expected_typ, BinaryOpConstraint (expr, l_typ, r_typ, expected_typ) :: (l_cons @ r_cons))
 
-    (* | Ast.Let (_, value_bindings, body) -> 
-      let* bindings = check_bindings env value_bindings in
+    | Ast.Let (_, value_bindings, body) -> 
+      let* let_env, constraints = check_bindings env value_bindings in
       let* body = match body with 
         None -> Error (Unrecognized_operation "body empty") 
       | Some b -> Ok b 
       in
-        check_expr bindings body *)
+        let* body_typ, body_cons = check_expr let_env body in 
+        Ok (body_typ, constraints @ body_cons)
 
     | _ -> 
       Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    

@@ -262,7 +262,7 @@ let parse_params patterns =
     in 
     let* pos = Stream.pos () in
     let location = {line = lhs.loc.line; col = lhs.loc.col; start_pos = lhs.loc.start_pos; end_pos = pos} in  
-      Ok {pat = lhs; rhs = rhs; val_constraint = None; location = location} 
+      Ok {pat = lhs; rhs = rhs; value_constraint = None; location = location} 
       
   let parse_value_bindings () = 
     let rec parse_value_bindings_aux bindings =
@@ -274,6 +274,28 @@ let parse_params patterns =
     in 
       let* binding = parse_value_binding () in 
         parse_value_bindings_aux [binding]
+
+
+  let parse_let_b () = 
+    let* let_tok = Stream.expect "let" in
+    let is_rec = Stream.accept "rec" in 
+    let* value_bindings = parse_value_bindings () in
+    if Stream.accept "in" then
+      let* body = expr () in
+      let* curr = Stream.take () in 
+      let span = token_span let_tok curr in
+      let let_expr = expr_node (Let (is_rec, value_bindings, Some body)) span in 
+      Ok { 
+        module_item_desc = Expr let_expr;
+        module_item_loc = span
+      }
+    else 
+      let* curr = Stream.take () in 
+      let span = token_span let_tok curr in
+      Ok ({ 
+        module_item_desc = LetDeclaration (is_rec, value_bindings);
+        module_item_loc = span
+      })
 
   let parse_let () = 
     let prev_tok = Stream.prev () in
@@ -377,7 +399,7 @@ let parse_params patterns =
     let span = token_span match_tok curr in
       Ok (expr_node (Match(match_expr, cases)) span)
 
-  let rec parse_base_type () = 
+  (* let rec parse_base_type () = 
     let* curr = Stream.take () in 
     match curr.lexeme with 
         "Int" -> Ok int 
@@ -442,15 +464,16 @@ let parse_params patterns =
       Ok {
         module_item_desc = TypeDefintion {type_name = ident.lexeme; type_constructors = variants}; 
         module_item_loc = span
-      }
+      } *)
 
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
-      Type -> parse_type_definition ()
+      (* Type -> parse_type_definition () *)
+      Let -> parse_let_b ()
     | _ -> 
       let* expr = expr () in 
-      match expr.expr_desc with  
+      (* match expr.expr_desc with  
         Let (is_rec, value_bindings, body) ->  
           (match body with  
               None -> Ok { 
@@ -459,7 +482,7 @@ let parse_params patterns =
               } 
             | Some _ -> 
               Ok {module_item_desc = Expr expr; module_item_loc = expr.loc})
-        | _ -> 
+        | _ ->  *)
           Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}
 
   let parse_program () = 

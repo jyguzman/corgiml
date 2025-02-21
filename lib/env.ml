@@ -25,7 +25,7 @@ module Type_env = struct
 
   let add (maps: t) bindings = 
     (Map.of_seq @@ List.to_seq bindings) :: maps
-  
+   
   let rec lookup name (maps: t): ty option = 
     match maps with 
       [] -> None 

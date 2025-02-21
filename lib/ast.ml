@@ -14,7 +14,7 @@ type ty =
 
 type pattern = {
   pattern_desc: pattern_desc;
-  loc: location
+  loc: location 
 }
 
 and pattern_desc = 
@@ -127,6 +127,7 @@ let rec string_of_type = function
     Printf.sprintf "Arrow(%s -> %s)" (string_of_type left) (string_of_type right)
   | Poly (vars, ty) -> 
     Printf.sprintf "Poly([%s], %s)" (stringify_items vars (fun s -> s)) (string_of_type ty)
+  | Any -> "Any (_)" 
 
 and stringify_module_item mi = match mi.module_item_desc with 
     Expr e -> stringify_expr e
