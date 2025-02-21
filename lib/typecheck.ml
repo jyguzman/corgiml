@@ -134,8 +134,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
           Ok string
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
-      end 
-      in
+      end in
         Ok (expected_typ, BinaryOpConstraint (expr, l_typ, r_typ, expected_typ) :: (l_cons @ r_cons))
 
     | Ast.Let (_, value_bindings, body) -> 
