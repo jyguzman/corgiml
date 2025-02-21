@@ -122,8 +122,8 @@ module TypeChecker (F: Error.FORMATTER) = struct
       let* l_typ, l_cons = check_expr env l in 
       let* r_typ, r_cons = check_expr env r in 
       let* expected_typ = begin match op with 
-          "+" | "-" | "*" | "/" -> 
-            Ok int
+        "+" | "-" | "*" | "/" -> 
+          Ok int
         | "+." | "-." | "*." | "/." -> 
           Ok float
         | "<" | "<=" | "=" | ">" | ">=" | "<>" 
