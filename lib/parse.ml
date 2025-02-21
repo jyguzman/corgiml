@@ -275,39 +275,14 @@ let parse_params patterns =
       let* binding = parse_value_binding () in 
         parse_value_bindings_aux [binding]
 
-
-  let parse_let_b () = 
-    let* let_tok = Stream.expect "let" in
-    let is_rec = Stream.accept "rec" in 
-    let* value_bindings = parse_value_bindings () in
-    if Stream.accept "in" then
-      let* body = expr () in
-      let* curr = Stream.take () in 
-      let span = token_span let_tok curr in
-      let let_expr = expr_node (Let (is_rec, value_bindings, Some body)) span in 
-      Ok { 
-        module_item_desc = Expr let_expr;
-        module_item_loc = span
-      }
-    else 
-      let* curr = Stream.take () in 
-      let span = token_span let_tok curr in
-      Ok ({ 
-        module_item_desc = LetDeclaration (is_rec, value_bindings);
-        module_item_loc = span
-      })
-
-  let parse_let () = 
+  let parse_let_expr () = 
     let prev_tok = Stream.prev () in
     let is_rec = Stream.accept "rec" in 
     let* value_bindings = parse_value_bindings () in
-    let* body = if Stream.accept "in" then
-      let* expr = expr () in Ok (Some expr)
-    else 
-      Ok None 
-    in 
-    let* curr = Stream.take () in 
-    let span = token_span prev_tok curr in
+    let* _ = Stream.expect "in" in
+    let* body = expr () in
+    let* curr = Stream.take () in  
+    let span = token_span prev_tok curr in 
       Ok (expr_node (Let (is_rec, value_bindings, body)) span)
 
   let parse_if_expr () = 
@@ -466,24 +441,31 @@ let parse_params patterns =
         module_item_loc = span
       } *)
 
+  let parse_let () = 
+    let* let_tok = Stream.expect "let" in
+    let is_rec = Stream.accept "rec" in 
+    let* value_bindings = parse_value_bindings () in
+    if Stream.accept "in" then
+      let* body = expr () in
+      let* curr = Stream.take () in 
+      let span = token_span let_tok curr in
+      let let_expr = expr_node (Let (is_rec, value_bindings, body)) span in 
+        Ok {module_item_desc = Expr let_expr;
+            module_item_loc = span} 
+    else 
+      let* curr = Stream.take () in 
+      let span = token_span let_tok curr in
+        Ok {module_item_desc = LetDeclaration (is_rec, value_bindings);
+            module_item_loc = span}
+
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
       (* Type -> parse_type_definition () *)
-      Let -> parse_let_b ()
+      Let -> parse_let ()
     | _ -> 
-      let* expr = expr () in 
-      (* match expr.expr_desc with  
-        Let (is_rec, value_bindings, body) ->  
-          (match body with  
-              None -> Ok { 
-                module_item_desc = LetDeclaration (is_rec, value_bindings);
-                module_item_loc = expr.loc
-              } 
-            | Some _ -> 
-              Ok {module_item_desc = Expr expr; module_item_loc = expr.loc})
-        | _ ->  *)
-          Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}
+      let* expr = expr () in
+        Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}
 
   let parse_program () = 
     let rec parse_program_aux module_items = 
@@ -516,7 +498,7 @@ let parse_params patterns =
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
       [("(", Nud parse_grouped); ("begin", Nud parse_grouped); 
       ("[", Nud parse_list); ("{", Nud parse_record_expr);
-      ("if", Nud parse_if_expr); ("let", Nud parse_let); ("match", Nud parse_match); 
+      ("if", Nud parse_if_expr); ("let", Nud parse_let_expr); ("match", Nud parse_match); 
       ("fun", Nud parse_function);]
 end
  

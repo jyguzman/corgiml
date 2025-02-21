@@ -130,7 +130,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
           -> Ok l_typ (* Left & right types must be equal, so just assume the left has correct type *)
         | "&&" | "||" -> 
           Ok bool
-        | "^" -> 
+        | "^" ->  
           Ok string
         | _ -> 
           Error (Unrecognized_operation (expr_str ^ "unrecognized binary operator" ^ op))
@@ -140,12 +140,8 @@ module TypeChecker (F: Error.FORMATTER) = struct
 
     | Ast.Let (_, value_bindings, body) -> 
       let* let_env, constraints = check_bindings env value_bindings in
-      let* body = match body with 
-        None -> Error (Unrecognized_operation "body empty") 
-      | Some b -> Ok b 
-      in
-        let* body_typ, body_cons = check_expr let_env body in 
-        Ok (body_typ, constraints @ body_cons)
+      let* body_typ, body_cons = check_expr let_env body in 
+        Ok (body_typ, constraints @ body_cons) 
 
     | _ -> 
       Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
