@@ -106,7 +106,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = List.iter 
     (fun t -> set_bp t 0) 
     [","; ")"; "]"; "}"; "->"; "|"; ":"; "of"; "in"; "and";
-    "type"; "with"; "then"; "else"; ";;"; "eof"]
+    "type"; "with"; "then"; "else"; ";"; "eof"]
 
   let lbp token =   
     match Hashtbl.find_opt bp_table token.lexeme with 
@@ -114,7 +114,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     | None -> 70 (* assume function application if we can't find a BP *)  
 
   let expr_node expr_desc location = 
-    {expr_desc = expr_desc; loc = location}
+    {expr_desc = expr_desc; loc = location; ty = None}
 
   let nud token = 
     let loc = loc token in 
@@ -454,15 +454,21 @@ let parse_params patterns =
             module_item_loc = span} 
     else 
       let* curr = Stream.take () in 
-      let span = token_span let_tok curr in
+      let last = if curr.token_type = Semicolon then 
+        Stream.prev() 
+      else 
+        curr 
+      in 
         Ok {module_item_desc = LetDeclaration (is_rec, value_bindings);
-            module_item_loc = span}
+          module_item_loc = token_span let_tok last}
 
-  let parse_module_item () =
+  let rec parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
       (* Type -> parse_type_definition () *)
       Let -> parse_let ()
+    | Semicolon -> 
+      let _ = Stream.advance() in parse_module_item ()
     | _ -> 
       let* expr = expr () in
         Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}
@@ -479,7 +485,7 @@ let parse_params patterns =
 
   let make_binary lhs =  
     let op = Stream.prev () in
-    let op_expr = {expr_desc = Ident op.lexeme; loc = loc op} in 
+    let op_expr = {expr_desc = Ident op.lexeme; loc = loc op; ty =None} in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* rhs = parse_expr bp in 
     Ok (expr_node (Apply(op_expr, [lhs; rhs])) (expr_span lhs rhs))

@@ -30,7 +30,8 @@ and pattern_desc =
 
 type expression = {
   expr_desc: expression_desc;
-  loc: location
+  loc: location;
+  ty: ty option
 }
 
 and expression_desc = 
@@ -107,8 +108,6 @@ let stringify_items ?(newline = false) items stringify_item  =
   ) in
   let str, _ = (List.fold_left stringifier ("", List.length items) items) in
   Printf.sprintf "%s" str
-
-let int_list = App("List", [App("Int", [])])
 
 let rec string_of_type = function 
   | App (name, types) -> 

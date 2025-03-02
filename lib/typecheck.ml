@@ -40,7 +40,7 @@ let unify _env = function
   
   | _ -> Ok ()
 
-let type_of_pattern env pattern = 
+let type_of_pattern env pattern =  
   match pattern.pattern_desc with 
     Const_integer _ -> Ok int 
   | Const_float _ -> Ok float 
@@ -141,7 +141,6 @@ module TypeChecker (F: Error.FORMATTER) = struct
       let* let_env, constraints = check_bindings env value_bindings in
       let* body_typ, body_cons = check_expr let_env body in 
         Ok (body_typ, constraints @ body_cons) 
-
     | _ -> 
       Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
 

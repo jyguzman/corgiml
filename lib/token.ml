@@ -82,5 +82,5 @@ let rec stringify_tokens = function
 
 module Token = struct 
   let make name token_type lexeme line col pos = 
-    {name = name; token_type = token_type; lexeme = lexeme; line = line; col = col; pos = pos} 
+    {name = name; token_type = token_type; lexeme = lexeme; line = line; col = col; pos = pos}     
 end

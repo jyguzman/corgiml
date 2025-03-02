@@ -62,7 +62,8 @@ module Tokenizer = struct
     line = line; 
     col = col; 
     pos = pos; 
-    tokens = tokens}
+    tokens = tokens
+  }
 end
 
 let peek lexer n = 
