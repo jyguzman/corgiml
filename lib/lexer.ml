@@ -8,7 +8,7 @@ let cut_first_n str n =
 module Keywords = Map.Make(String);;
 
 let keywords = Keywords.of_seq @@ List.to_seq [
-  ("fun", Fun); 
+  ("fn", Fn); 
 
   ("match", Match); ("with", With);
 
@@ -22,8 +22,11 @@ let keywords = Keywords.of_seq @@ List.to_seq [
 
   ("of", Of); ("type", Type); ("and", And);
 
+  ("do", Do);
+
   ("Int", Int_annotation); ("Float", Float_annotation); ("String", String_annotation);
-  ("Bool", Bool_annotation); ("Unit", Unit_annotation)
+  ("Bool", Bool_annotation); ("Unit", Unit_annotation); ("List", List_annotation); ("Option", Option_annotation);
+  ("Result", Result_annotation); ("Tuple", Tuple_annotation)
 
 ];;
 
@@ -140,7 +143,10 @@ let tokenize_ident lexer =
           Int_annotation | Float_annotation | String_annotation
           | Bool_annotation | Unit_annotation -> "annotation", keyword_type
           | _ -> ident, keyword_type)
-      | None -> "ident", Ident ident
+      | None -> 
+        match ident.[0] with  
+        'A' .. 'Z' -> "ident", Upper_ident ident
+        | _ -> "upper_ident", Ident ident
     in
     let token = Token.make name token_type ident lexer.line lexer.col lexer.pos in
     let updated_tokens = token :: updated_lexer.tokens in

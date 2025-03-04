@@ -125,6 +125,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let bytes = String.to_bytes s in 
         Ok (expr_node (String (bytes, Bytes.length bytes)) loc) 
     | Ident i -> Ok (expr_node (Ident i) loc)
+    | Upper_ident i -> Ok (expr_node (UpperIdent i) loc)
     | True -> Ok (expr_node (Bool true) loc)
     | False -> Ok (expr_node (Bool false) loc)
     | _ ->  
@@ -190,6 +191,35 @@ module Parser (Stream : TOKEN_STREAM) = struct
       Stream.expect ")" 
     in
       Ok (expr_node (Grouping inner) (token_span opening closing))
+
+  let parse_multiple parse_func separator end_token = 
+    let rec parse_multiple_aux items = 
+      let* curr = Stream.take() in 
+      if curr.token_type = end_token then 
+        Ok items 
+      else
+        if curr.token_type = separator then 
+          let* item = parse_func () in 
+          parse_multiple_aux (item :: items)
+      else 
+        Ok items
+    in 
+      parse_multiple_aux []
+
+  let parse_multiple_exprs () = 
+    parse_multiple expr Comma R_paren
+
+  (* Parse a grouped expression or a tuple *)
+  let parse_paren_expr () = 
+    let opening = Stream.prev () in 
+    let* expr = expr () in 
+    let* curr = Stream.take () in 
+    if curr.token_type = R_paren then 
+      Ok (expr_node (Grouping expr) (token_span opening curr))
+    else
+      let* exprs = parse_multiple_exprs () in 
+      let* closing = Stream.take () in
+      Ok (expr_node (Tuple exprs) (token_span opening closing))
 
   let parse_pattern () = 
     let* next = Stream.take () in 
@@ -298,9 +328,9 @@ let parse_params patterns =
     let location = token_span if_tok curr in
       Ok (expr_node (If (condition, then_expr, else_expr)) location)
 
-  let parse_list () = 
+  let list () = 
     let lbracket = Stream.prev () in 
-    let rec parse_list_aux lst = 
+    let rec list_aux lst = 
       let* curr = Stream.take () in 
       if curr.token_type = R_bracket then 
         Ok Nil
@@ -309,7 +339,7 @@ let parse_params patterns =
       else
         let* head = expr () in 
         let* tail = if Stream.accept "," then  
-          parse_list_aux lst
+          list_aux lst
         else 
           let* curr = Stream.take () in 
           if curr.token_type != R_bracket then 
@@ -319,85 +349,111 @@ let parse_params patterns =
         in
           Ok (Cons (head, tail))
     in
-    let* lst = parse_list_aux Nil in
+    let* lst = list_aux Nil in
     let* rbracket = Stream.expect "]" in 
       Ok (expr_node (List lst) (token_span lbracket rbracket))
 
-  let parse_record_expr_field () =
+  let record_field () =
     let* key = Stream.expect "ident" in 
     let _ = Stream.expect "=" in 
     let* value = expr () in 
       Ok {key = key.lexeme; value = value} 
 
-  let parse_record_expr () = 
+  let record () = 
     let lbrace = Stream.prev () in 
-    let rec parse_record_expr_aux fields = 
+    let rec record_aux fields = 
       let* curr = Stream.take () in 
       if curr.token_type = R_brace then 
         Ok fields 
       else
-        let* field = parse_record_expr_field () in 
+        let* field = record_field () in 
         let fields = field :: fields in 
         if Stream.accept "," then  
-          parse_record_expr_aux fields
+          record_aux fields
         else 
           Ok fields
     in
-    let* fields = parse_record_expr_aux [] in 
+    let* fields = record_aux [] in 
     let* rbrace = Stream.expect "}" in 
       Ok (expr_node (Record (List.rev fields)) (token_span lbrace rbrace))
 
-  let parse_match_case () = 
+  let match_case () = 
     let* pattern = parse_pattern () in 
     let _ = Stream.advance () in 
     let* _ = Stream.expect "->" in 
     let* expr = expr () in 
       Ok {lhs = pattern; rhs = expr}
 
-  let parse_match_cases () = 
-    let rec parse_match_cases_aux cases =
+  let match_cases () = 
+    let rec match_cases_aux cases =
       if Stream.accept "|" then 
-        let* case = parse_match_case () in
-          parse_match_cases_aux (case :: cases)
+        let* case = match_case () in
+          match_cases_aux (case :: cases)
       else 
           Ok (List.rev cases)
     in 
-      let* case = parse_match_case () in 
-        parse_match_cases_aux [case] 
+      let* case = match_case () in 
+        match_cases_aux [case] 
 
-  let parse_match () = 
+  let match_expr () = 
     let match_tok = Stream.prev () in
     let* match_expr = expr () in 
     let* _ = Stream.expect "with" in
-    let* cases = parse_match_cases () in 
+    let* cases = match_cases () in 
     let* curr = Stream.take () in
     let span = token_span match_tok curr in
       Ok (expr_node (Match(match_expr, cases)) span)
 
-  (* let rec parse_base_type () = 
+  let rec arrow left = 
+    let* right = ty () in
+      Ok (Arrow (left, right))
+
+  and paren_type () = 
+    let* typ = ty () in 
+    let* curr = Stream.take() in 
+    let* typ = match curr.lexeme with 
+      ")" -> Ok typ 
+    | "," -> 
+      let _ = Stream.advance () in 
+      let* inner_types = parse_multiple ty Comma R_paren in
+        Ok (App("Tuple", inner_types)) 
+    | "->" ->
+      let _ = Stream.advance () in
+      let* right = arrow typ in 
+        Ok (Arrow (typ, right))
+    | _ -> Error (Unexpected_token "invalid type lexeme")
+    in 
+      let* _ = Stream.expect ")" in
+        Ok typ
+
+  and ty () = 
     let* curr = Stream.take () in 
-    match curr.lexeme with 
+    let* typ = match curr.lexeme with 
         "Int" -> Ok int 
       | "Float" -> Ok float
       | "String" -> Ok string
       | "Bool" -> Ok bool 
       | "Unit" -> Ok unit 
-      | "[" -> 
-        let* inner_type = parse_base_type () in 
-        Ok (Constr("List", [inner_type]))
-      | _ -> Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token curr)))
-  
-  let parse_list_of_base_types end_tok = 
-    let rec parse_list_of_base_types_aux types = 
-      if Stream.accept end_tok then 
-        Ok types 
-      else
-        let* typ = parse_base_type () in 
-          parse_list_of_base_types_aux (typ :: types)
-    in 
-      parse_list_of_base_types_aux []
+      | "Option" | "Result" -> 
+        let* inner = ty () in Ok (App(curr.lexeme, [inner]))
 
-  let parse_variant () = 
+      | "[" -> 
+        let* inner = ty () in Ok (App("List", [inner]))
+      
+      | "(" -> paren_type ()    
+                 
+      | _ -> 
+        Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token curr)))
+    in 
+    let _ = Stream.advance () in 
+    let* curr = Stream.take () in 
+    if curr.lexeme = "->" then 
+      let _ = Stream.advance () in
+        arrow typ
+    else
+      Ok typ
+
+  (* let parse_variant () = 
     let* ident = upper_ident () in 
     let* types = if !(Stream.accept "|") then
       Ok []
@@ -465,10 +521,10 @@ let parse_params patterns =
   let rec parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
-      (* Type -> parse_type_definition () *)
-      Let -> parse_let ()
-    | Semicolon -> 
-      let _ = Stream.advance() in parse_module_item ()
+      (* Type -> 
+
+        Ok {module_item_desc = Expr expr; module_item_loc = expr.loc} *)
+    | Let -> parse_let ()
     | _ -> 
       let* expr = expr () in
         Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}
@@ -502,9 +558,9 @@ let parse_params patterns =
   
   let _ = 
     List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
-      [("(", Nud parse_grouped); ("begin", Nud parse_grouped); 
-      ("[", Nud parse_list); ("{", Nud parse_record_expr);
-      ("if", Nud parse_if_expr); ("let", Nud parse_let_expr); ("match", Nud parse_match); 
+      [("(", Nud parse_paren_expr); ("begin", Nud parse_grouped); 
+      ("[", Nud list); ("{", Nud record);
+      ("if", Nud parse_if_expr); ("let", Nud parse_let_expr); ("match", Nud match_expr); 
       ("fun", Nud parse_function);]
 end
  

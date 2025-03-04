@@ -3,6 +3,7 @@ type token_type =
   | Decimal of float
   | String of string
   | Ident of string
+  | Upper_ident of string
 
   | Plus
   | Slash 
@@ -26,12 +27,13 @@ type token_type =
   | Double_ampersand
   | Double_vertical_bar
   
-  | Let | Rec | In | And | Fun
+  | Let | Rec | In | And | Fn
   | Match | With
   | If | Else | Then
   | True | False
   | Begin | End
   | Type | Of
+  | Do
 
   | L_paren 
   | R_paren
@@ -57,6 +59,10 @@ type token_type =
   | String_annotation
   | Bool_annotation
   | Unit_annotation
+  | List_annotation
+  | Tuple_annotation
+  | Option_annotation 
+  | Result_annotation
 
   | Eof
 

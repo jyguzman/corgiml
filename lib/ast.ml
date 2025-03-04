@@ -40,6 +40,7 @@ and expression_desc =
   | Bool of bool
   | String of bytes * int
   | Ident of string 
+  | UpperIdent of string 
   | Grouping of expression
 
   | Binary of expression * string * expression
@@ -100,6 +101,12 @@ let bool = App("Bool", [])
 let string = App("String", [])
 let unit = App("Unit", [])
 
+let ty_app constr args = App(constr, args)
+
+let ty_list inner = App("List", [inner])
+let ty_option inner = App("Option", [inner])
+let ty_result inner = App("Result", [inner])
+
 let stringify_items ?(newline = false) items stringify_item  = 
   let stringifier = (fun (curr_list_str, num_items_left) item ->
     let nl = if newline then "\n" else "" in
@@ -144,6 +151,7 @@ and stringify_expr expr = match expr.expr_desc with
   | Float f -> string_of_float f
   | Bool b -> string_of_bool b
   | Ident i -> Printf.sprintf "Id(%s)" i 
+  | UpperIdent i -> Printf.sprintf "UpperId(%s)" i 
   | Grouping g -> Printf.sprintf "(%s)" (stringify_expr g)
   | Binary (left, op, right) -> Printf.sprintf "Binary(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
   | Unary (op, expr) -> Printf.sprintf "Unary(%s%s)" op (stringify_expr expr)

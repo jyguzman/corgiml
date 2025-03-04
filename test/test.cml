@@ -1,4 +1,10 @@
-let square x = x * x in square 5
-let x = 5;
-print "heelo";
-print "again"
+let square x = 
+    x * x in square 5
+
+type Thing = Tuple[Int, String, Bool]
+
+let (x: Tuple) = 5
+
+type Thing a b = 
+    | VarOne List Int
+    | VarTwo Tuple[String, Bool] Int String Option[Int]
