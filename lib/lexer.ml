@@ -7,7 +7,7 @@ let cut_first_n str n =
 
 module Keywords = Map.Make(String);;
 
-let keywords = Keywords.of_seq @@ List.to_seq [
+let keywords = Keywords.of_seq @@ List.to_seq [  
   ("fn", Fn); 
 
   ("match", Match); ("with", With);

@@ -19,8 +19,10 @@ module type TOKEN_STREAM = sig
   val prev: unit -> token
   val expect: string -> (token, parse_error) result
   val accept: string -> bool
+  val accept_no_adv: string -> bool
   val accept_any: string list -> bool
   val take: unit -> (token, parse_error) result
+  val next: unit -> (token, parse_error) result
   val eof: unit -> bool
 end
 
@@ -52,11 +54,15 @@ module TokenStream : TOKEN_STREAM = struct
     let _ = tokens := xs in 
       prev := x
 
-  let prev () = !prev
-
   let take () = match !tokens with 
     [] -> Error (Unexpected_eof "unexpected end of file")  
   | x :: _ -> Ok x
+
+  let next () = 
+    let _ = advance () in 
+    take ()
+
+  let prev () = !prev
 
   let pos () = match !tokens with 
     [] -> Error (Unexpected_eof "unexpected end of file")  
@@ -78,6 +84,11 @@ module TokenStream : TOKEN_STREAM = struct
     else 
       false
 
+  let accept_no_adv lexeme_or_name = match !tokens with 
+    [] -> false
+  | x :: _ -> 
+    x.lexeme = lexeme_or_name || x.name = lexeme_or_name
+
   let accept_any strings = match !tokens with 
     [] -> false
   | x :: _ -> List.mem x.lexeme strings || List.mem x.name strings 
@@ -90,7 +101,6 @@ end
 type handler = 
   | Nud of (unit -> (expression, parse_error) result) 
   | Led of (expression -> (expression, parse_error) result) 
-
 
 module Parser (Stream : TOKEN_STREAM) = struct  
   let prec_table = Hashtbl.create 64
@@ -125,7 +135,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let bytes = String.to_bytes s in 
         Ok (expr_node (String (bytes, Bytes.length bytes)) loc) 
     | Ident i -> Ok (expr_node (Ident i) loc)
-    | Upper_ident i -> Ok (expr_node (UpperIdent i) loc)
+    | Upper_ident i -> Ok (expr_node (UpperIdent i) loc) 
     | True -> Ok (expr_node (Bool true) loc)
     | False -> Ok (expr_node (Bool false) loc)
     | _ ->  
@@ -175,12 +185,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let span = expr_span left (List.hd args) in
     Ok (expr_node (Apply (left, List.rev args)) span)
 
+
+  let ident () = 
+    Stream.expect "ident"
+    
   let upper_ident () = 
-    let* curr = Stream.expect ("ident") in 
-    let first_letter = curr.lexeme.[0] in 
-    match first_letter with 
-      'A'..'Z' -> Ok curr
-      | _ -> Error (Unexpected_token "Expected an identifier starting with an upper case letter") 
+    Stream.expect "upper_ident"
   
   let parse_grouped () = 
     let opening = Stream.prev () in 
@@ -200,7 +210,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       else
         if curr.token_type = separator then 
           let* item = parse_func () in 
-          parse_multiple_aux (item :: items)
+            parse_multiple_aux (item :: items)
       else 
         Ok items
     in 
@@ -408,26 +418,32 @@ let parse_params patterns =
     let* right = ty () in
       Ok (Arrow (left, right))
 
+  and parse_multiple_types () = 
+    let rec parse_multiple_types_aux types =
+      if Stream.accept_no_adv ")" then 
+        Ok types 
+      else
+        if Stream.accept "," then
+          let* typ = ty () in 
+          let _ = Stream.advance () in
+          parse_multiple_types_aux (typ :: types)
+        else 
+          Ok types
+    in 
+      parse_multiple_types_aux []
+
   and paren_type () = 
     let* typ = ty () in 
-    let* curr = Stream.take() in 
-    let* typ = match curr.lexeme with 
-      ")" -> Ok typ 
-    | "," -> 
-      let _ = Stream.advance () in 
-      let* inner_types = parse_multiple ty Comma R_paren in
-        Ok (App("Tuple", inner_types)) 
-    | "->" ->
-      let _ = Stream.advance () in
-      let* right = arrow typ in 
-        Ok (Arrow (typ, right))
-    | _ -> Error (Unexpected_token "invalid type lexeme")
-    in 
-      let* _ = Stream.expect ")" in
-        Ok typ
+    let* curr = Stream.next () in
+    if curr.lexeme = "," then 
+      let* inner = parse_multiple_types () in 
+      Ok (App("Tuple", typ :: List.rev inner))
+    else 
+      Ok typ
 
   and ty () = 
-    let* curr = Stream.take () in 
+    let* curr = Stream.take () in   
+    let _ = Stream.advance () in    
     let* typ = match curr.lexeme with 
         "Int" -> Ok int 
       | "Float" -> Ok float
@@ -438,18 +454,22 @@ let parse_params patterns =
         let* inner = ty () in Ok (App(curr.lexeme, [inner]))
 
       | "[" -> 
-        let* inner = ty () in Ok (App("List", [inner]))
-      
-      | "(" -> paren_type ()    
-                 
+        let _ = Stream.advance () in
+        let* inner = ty () in 
+        let _ = Stream.expect "]" in 
+        Ok (App("List", [inner]))
+
+      | "(" -> 
+        let _ = Stream.advance () in
+        let* typ = paren_type () in 
+        let _ = print_endline (string_of_type typ) in
+        let _ = Stream.expect ")" in 
+        Ok typ
+
       | _ -> 
         Error (Unsupported_type (Printf.sprintf "unsupported type %s for type constructor" (stringify_token curr)))
-    in 
-    let _ = Stream.advance () in 
-    let* curr = Stream.take () in 
-    if curr.lexeme = "->" then 
-      let _ = Stream.advance () in
-        arrow typ
+    in if Stream.accept "->" then 
+      arrow typ
     else
       Ok typ
 
@@ -518,7 +538,7 @@ let parse_params patterns =
         Ok {module_item_desc = LetDeclaration (is_rec, value_bindings);
           module_item_loc = token_span let_tok last}
 
-  let rec parse_module_item () =
+  let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
       (* Type -> 
@@ -569,3 +589,11 @@ module ParserImpl = Parser(TokenStream)
 let parse source = 
   let _ = TokenStream.init source in 
   ParserImpl.parse_program ()
+
+let parse_expression source = 
+  let _ = TokenStream.init source in 
+  ParserImpl.expr ()
+
+let parse_type source = 
+  let _ = TokenStream.init source in 
+  ParserImpl.ty ()

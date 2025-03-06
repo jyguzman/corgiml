@@ -27,8 +27,18 @@ module Formatter = Error.Formatter(struct let src = source_info end);;
 
 (* module TypeChecker = Typecheck.TypeChecker(Formatter);; *)
 
-let p = Parse.parse source_info.raw in 
+(* let p = Parse.parse source_info.raw in  *)
 
+let typ = Parse.parse_type "((Bool)" in 
+  match typ with 
+      Ok t -> print_endline (Ast.string_of_type t)
+    | Error e -> (match e with 
+        Parse.Unexpected_eof s -> print_endline s
+      | Parse.Unexpected_token s -> print_endline s
+      | Parse.Invalid_rec_let_binding s -> print_endline s
+      | Parse.Unsupported_type s -> print_endline s)
+
+(* in
 match p with 
     Ok p -> print_endline (Ast.stringify_program p)
       (* let _ = print_endline (Ast.stringify_program p) in
@@ -41,7 +51,7 @@ match p with
       Parse.Unexpected_eof s -> print_endline s
     | Parse.Unexpected_token s -> print_endline s
     | Parse.Invalid_rec_let_binding s -> print_endline s
-    | Parse.Unsupported_type s -> print_endline s) 
+    | Parse.Unsupported_type s -> print_endline s)  *)
 
 
 

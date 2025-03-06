@@ -57,6 +57,8 @@ and expression_desc =
   | Tuple of expression list
   | Record of field list
 
+  (* | RecordAccess of expr * string *)
+
 and corgi_list = Nil | Cons of expression * corgi_list
 
 and case = {
@@ -124,9 +126,10 @@ let rec string_of_type = function
       | "String", [] -> "String"
       | "Bool", [] -> "Bool"
       | "Unit", [] -> "Unit"
-      | "List", _ -> 
-        Printf.sprintf "[%s]" (stringify_items types string_of_type)
-      | _, _ -> ""
+      | "Tuple", _ -> Printf.sprintf "Tuple(%s)" (stringify_items types string_of_type)
+      | "Option", _ | "Result", [] -> Printf.sprintf "%s[%s]" name (stringify_items types string_of_type)
+      | _, _ -> 
+        Printf.sprintf "App(%s, [%s])" name (stringify_items types string_of_type)
     end
   | Var name -> Printf.sprintf "Var(%s)" name 
   | Arrow (left, right) -> 
