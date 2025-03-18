@@ -25,12 +25,6 @@ type type_constraint =
   | IfConditionConstraint of expression * ty (* condition of an if expression must be Bool *)
   | IfBranchesConstraint of expression * ty * ty (* these types must match *)
 
-  (* the type of the scrutinee and the types of the patterns. Patterns must be scrutinee's type *)
-  | MatchPatternConstraint of expression * ty * ty list 
-
-  (* The types of each match case result. All cases must result in the same. Assume the first type is correct. *)
-  | MatchResultConstraint of expression * ty list
-
 let unify _env = function 
   | App("Int", []), App("Int", []) 
   | App("Float", []), App("Float", []) 
@@ -118,7 +112,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
     (* | Match (exp, cases) -> 
       let* exp_typ, exp_cons = check_expr env expr in  *)
 
-    | Binary (l, op, r) -> 
+    | Binary (l, (op, _op_loc), r) -> 
       let* l_typ, l_cons = check_expr env l in 
       let* r_typ, r_cons = check_expr env r in 
       let* expected_typ = begin match op with 

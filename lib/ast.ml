@@ -5,11 +5,14 @@ type location = {
   end_pos: int
 }
 
+type op = string * location
+
 type ty = 
   | App of string * ty list 
   | Var of string 
   | Arrow of ty * ty
   | Poly of string list * ty
+  (* | Record of ty list *)
   | Any (* _ (wildcard) *)
 
 type pattern = {
@@ -43,8 +46,8 @@ and expression_desc =
   | UpperIdent of string 
   | Grouping of expression
 
-  | Binary of expression * string * expression
-  | Unary of string * expression 
+  | Binary of expression * op * expression
+  | Unary of op * expression 
 
   | If of expression * expression * expression option
   | Let of bool * value_binding list * expression
@@ -156,8 +159,8 @@ and stringify_expr expr = match expr.expr_desc with
   | Ident i -> Printf.sprintf "Id(%s)" i 
   | UpperIdent i -> Printf.sprintf "UpperId(%s)" i 
   | Grouping g -> Printf.sprintf "(%s)" (stringify_expr g)
-  | Binary (left, op, right) -> Printf.sprintf "Binary(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
-  | Unary (op, expr) -> Printf.sprintf "Unary(%s%s)" op (stringify_expr expr)
+  | Binary (left, (op, _), right) -> Printf.sprintf "Binary(%s %s %s)" (stringify_expr left) op (stringify_expr right) 
+  | Unary ((op, _), expr) -> Printf.sprintf "Unary(%s%s)" op (stringify_expr expr)
   | Let (is_rec, value_bindings, rhs) -> 
     let rec_str = if is_rec then "rec " else "" in 
     let bindings_str = stringify_items value_bindings stringify_value_binding in

@@ -145,13 +145,13 @@ let tokenize_ident lexer =
           | _ -> ident, keyword_type)
       | None -> 
         match ident.[0] with  
-        'A' .. 'Z' -> "ident", Upper_ident ident
-        | _ -> "upper_ident", Ident ident
+        'A' .. 'Z' -> "upper_ident", Upper_ident ident
+        | _ -> "ident", Ident ident
     in
     let token = Token.make name token_type ident lexer.line lexer.col lexer.pos in
     let updated_tokens = token :: updated_lexer.tokens in
     let _ = Hashtbl.add src_map lexer.pos lexer.line in
-    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos updated_tokens
+    Tokenizer.make lexer.source updated_lexer.current updated_lexer.line updated_lexer.col updated_lexer.pos updated_tokens 
 
 let tokenize_op lexer c = 
   let next = peek lexer 1 in 
@@ -197,6 +197,18 @@ let tokenize_op lexer c =
   let _ = Hashtbl.add src_map lexer.pos lexer.line in
   {lexer with col = lexer.col + n; pos = lexer.pos + n; current = skip; tokens = token :: lexer.tokens}
 
+let comment lexer =  
+  let rec comment_aux lexer =
+    let _ = print_char lexer.current.[0] in
+    if lexer.current.[0] = '\n' then 
+      lexer 
+    else 
+      let rest = cut_first_n lexer.current 1 in 
+      let new_l = {lexer with current = rest; pos = lexer.pos + 1; col = lexer.col + 1} in 
+      comment_aux new_l
+  in 
+    comment_aux lexer
+
  let tokenize_source source = 
   let rec tokenize_source lexer = 
     if String.length lexer.current = 0 then 
@@ -205,6 +217,8 @@ let tokenize_op lexer c =
       let c = peek lexer 0 in
       let skip = cut_first_n lexer.current 1 in 
       tokenize_source @@ match c with 
+        | '#' -> comment lexer
+         
         | '0' .. '9' -> tokenize_number lexer 
 
         | 'a' .. 'z' | 'A' .. 'Z' -> tokenize_ident lexer

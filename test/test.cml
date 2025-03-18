@@ -1,10 +1,1 @@
-let square x = 
-    x * x in square 5
-
-type Thing = Tuple[Int, String, Bool]
-
-let (x: Tuple) = 5
-
-type Thing a b = 
-    | VarOne List Int
-    | VarTwo Tuple[String, Bool] Int String Option[Int]
+let x = 5.9 and y = "hello"

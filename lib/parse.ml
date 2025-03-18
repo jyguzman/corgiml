@@ -91,7 +91,8 @@ module TokenStream : TOKEN_STREAM = struct
 
   let accept_any strings = match !tokens with 
     [] -> false
-  | x :: _ -> List.mem x.lexeme strings || List.mem x.name strings 
+  | x :: _ -> 
+    List.mem x.lexeme strings || List.mem x.name strings 
 
   let eof () = match !tokens with 
     | [] | [_] -> true 
@@ -258,7 +259,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     in 
       parse_patterns_aux [] 
 
-  (* let make_fn_node parrw2qiams body loc = 
+  (* let make_fn_node params body loc = 
     let params = List.rev params in 
       List.fold_left (fun fn param -> expr_node (Function {param = param; expr = fn}) loc) body params *)
 
@@ -288,7 +289,7 @@ let parse_params patterns =
 
   let parse_value_binding () =
     let* patterns = parse_patterns () in
-    let num_idents = List.length patterns in 
+    let num_idents = List.length patterns in
     let lhs = List.hd patterns in
     let* _ = Stream.expect "=" in 
     let* rhs = if num_idents = 1 then 
@@ -561,7 +562,7 @@ let parse_params patterns =
 
   let make_binary lhs =  
     let op = Stream.prev () in
-    let op_expr = {expr_desc = Ident op.lexeme; loc = loc op; ty =None} in 
+    let op_expr = {expr_desc = Ident op.lexeme; loc = loc op; ty = None} in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* rhs = parse_expr bp in 
     Ok (expr_node (Apply(op_expr, [lhs; rhs])) (expr_span lhs rhs))
@@ -569,8 +570,8 @@ let parse_params patterns =
   let bin_op left = 
     let op = Stream.prev () in 
     let bp = Hashtbl.find bp_table op.lexeme in
-    let* right = parse_expr bp in 
-    Ok (expr_node (Binary (left, op.lexeme, right)) (expr_span left right))
+    let* right = parse_expr bp in  
+    Ok (expr_node (Binary (left, (op.lexeme, loc op), right)) (expr_span left right))
 
   let _ = List.iter 
         (fun op -> Hashtbl.add prec_table op (Led bin_op)) 
