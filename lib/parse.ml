@@ -1,6 +1,12 @@
 open Token
 open Ast
 
+(* TODO: 
+ - Parse tuple patterns
+ - Parse unary expressions
+ - Parse type declarations (aliases, records, sum types)
+*)
+
 type parse_error = 
   | Unexpected_eof of string
   | Unexpected_token of string
@@ -72,7 +78,7 @@ module TokenStream : TOKEN_STREAM = struct
     [] -> Error (Unexpected_token "unexpected end of file")
   | x :: _ -> 
     if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then 
-      let _ = advance () in Ok (x)
+      let _ = advance () in Ok x
     else 
       Error (Unexpected_token ("expected " ^ lexeme_or_name ^ " but got " ^ stringify_token x))
 
@@ -104,8 +110,8 @@ type handler =
   | Led of (expression -> (expression, parse_error) result) 
 
 module Parser (Stream : TOKEN_STREAM) = struct  
-  let prec_table = Hashtbl.create 64
-  let bp_table = Hashtbl.create 64
+  let prec_table = Hashtbl.create 32
+  let bp_table = Hashtbl.create 32
 
   let set_bp op_lexeme bp = Hashtbl.add bp_table op_lexeme bp
 
@@ -113,6 +119,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let _ = List.iter (fun op -> set_bp op 10) ["<"; "<="; ">"; ">="; "="]
   let _ = List.iter (fun op -> set_bp op 20) ["+"; "+."; "-"; "-."]
   let _ = List.iter (fun op -> set_bp op 30) ["*"; "*."; "/"; "/."]
+  let _ = set_bp "." 40 
   let _ = List.iter (fun t -> set_bp t 0) ["fun"; "let"; "match"] 
   let _ = List.iter 
     (fun t -> set_bp t 0) 
@@ -226,10 +233,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let* expr = expr () in 
     let* curr = Stream.take () in 
     if curr.token_type = R_paren then 
+      let _ = Stream.advance () in
       Ok (expr_node (Grouping expr) (token_span opening curr))
     else
       let* exprs = parse_multiple_exprs () in 
       let* closing = Stream.take () in
+      let _ = Stream.advance () in
       Ok (expr_node (Tuple exprs) (token_span opening closing))
 
   let parse_pattern () = 
@@ -474,50 +483,6 @@ let parse_params patterns =
     else
       Ok typ
 
-  (* let parse_variant () = 
-    let* ident = upper_ident () in 
-    let* types = if !(Stream.accept "|") then
-      Ok []
-    else
-      parse_list_of_base_types "|"
-    in 
-      Ok (ident.lexeme, types)
-
-  let parse_variant type_def_name = 
-    let* ident = upper_ident () in 
-    let* typ = if Stream.accept "of" then
-      let* annotation = Stream.expect "annotation" in 
-      let* typ = parse_type_con_type annotation in 
-        Ok (Some typ)
-      else 
-        Ok None
-    in 
-      Ok ({type_def_name = type_def_name; con_name = ident.lexeme; of_type = typ})
-
-  let parse_type_constructors type_def_name = 
-    let rec parse_type_constructors_aux typ_cons =
-      if Stream.accept "|" then 
-        let* typ_con = parse_type_constructor type_def_name in
-          parse_type_constructors_aux (typ_con :: typ_cons)
-      else 
-          Ok (List.rev typ_cons)
-    in 
-      let* typ_con = parse_type_constructor type_def_name in 
-        parse_type_constructors_aux [typ_con]
-
-  let parse_type_definition () = 
-    let* type_tok = Stream.expect "type" in 
-    let* ident = upper_ident () in 
-    let* _ = Stream.expect "=" in 
-    (* Need to check what type it might be: base type, record ("{"), ADT (another ident), etc.*)
-    let* variants = parse_type_constructors ident.lexeme in
-    let* curr = Stream.take () in 
-    let span = token_span type_tok curr in
-      Ok {
-        module_item_desc = TypeDefintion {type_name = ident.lexeme; type_constructors = variants}; 
-        module_item_loc = span
-      } *)
-
   let parse_let () = 
     let* let_tok = Stream.expect "let" in
     let is_rec = Stream.accept "rec" in 
@@ -542,9 +507,6 @@ let parse_params patterns =
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
-      (* Type -> 
-
-        Ok {module_item_desc = Expr expr; module_item_loc = expr.loc} *)
     | Let -> parse_let ()
     | _ -> 
       let* expr = expr () in
@@ -560,25 +522,30 @@ let parse_params patterns =
     in 
       parse_program_aux []
 
-  let make_binary lhs =  
-    let op = Stream.prev () in
-    let op_expr = {expr_desc = Ident op.lexeme; loc = loc op; ty = None} in 
-    let bp = Hashtbl.find bp_table op.lexeme in
-    let* rhs = parse_expr bp in 
-    Ok (expr_node (Apply(op_expr, [lhs; rhs])) (expr_span lhs rhs))
-
   let bin_op left = 
     let op = Stream.prev () in 
     let bp = Hashtbl.find bp_table op.lexeme in
     let* right = parse_expr bp in  
     Ok (expr_node (Binary (left, (op.lexeme, loc op), right)) (expr_span left right))
 
+  let parse_record_access left = 
+    let _op = Stream.prev () in 
+    let* field = Stream.expect "ident" in 
+    let loc = {
+      line = left.loc.line;
+      col = left.loc.col;
+      start_pos = left.loc.start_pos;
+      end_pos = field.pos + (String.length field.lexeme) - 1
+    } in
+    Ok (expr_node (RecordAccess (left, field.lexeme)) loc)
+    
   let _ = List.iter 
         (fun op -> Hashtbl.add prec_table op (Led bin_op)) 
         ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
+
+  let _ = Hashtbl.add prec_table "." (Led parse_record_access)
   
-  let _ = 
-    List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
+  let _ = List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
       [("(", Nud parse_paren_expr); ("begin", Nud parse_grouped); 
       ("[", Nud list); ("{", Nud record);
       ("if", Nud parse_if_expr); ("let", Nud parse_let_expr); ("match", Nud match_expr); 

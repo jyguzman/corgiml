@@ -53,6 +53,7 @@ type token_type =
   | Colon 
   | Double_colon
   | Comma
+  | Dot
 
   | Int_annotation
   | Float_annotation 

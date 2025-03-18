@@ -1,1 +1,4 @@
-let x = 5.9 and y = "hello"
+let x = 5.9
+let z = y * ((5.3 - 9) + 9)
+let record = {x = 5, y = 10}
+let w = record.x

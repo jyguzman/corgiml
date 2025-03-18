@@ -159,10 +159,11 @@ let tokenize_op lexer c =
 
     | ',' -> ("comma", Comma, ",")
     | ')' -> ("rparen", R_paren, ")") 
-    | ']' -> ("rbracket", R_bracket, "]") 
+    | ']' -> ("rbracket", R_bracket, "]")  
     | '{' -> ("lbrace", L_brace, "{") 
     | '}' -> ("rbrace", R_brace, "}")
     | '_' -> ("wildcard", Wildcard, "_")
+    | '.' -> ("dot", Dot, ".")
 
     | '>' -> if next = '=' then ("greater_equal", Greater_equal, ">=") else ("greater", Greater, ">")
     | '=' -> if next = '=' then ("double_equal", Double_equal, "==") else ("single_equal", Single_equal, "=")
