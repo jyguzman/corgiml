@@ -5,15 +5,15 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github jyguzman/corgiml))
 
-(authors "Author Name <author@example.com>")
+(authors "Jordie Guzman <jordieyguzman@gmail.com>")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "Jordie Guzman <jordieyguzman@gmail.com>")
 
 (license LICENSE)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/jyguzman/corgiml)
 
 (package
  (name corgiml)

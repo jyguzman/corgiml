@@ -217,7 +217,12 @@ module Parser (Stream : TOKEN_STREAM) = struct
         Ok items 
       else
         if curr.token_type = separator then 
-          let* item = parse_func () in 
+          let _ = Stream.advance () in
+          let* curr = Stream.take() in 
+          if curr.token_type = end_token then
+            Ok items 
+          else 
+            let* item = parse_func () in 
             parse_multiple_aux (item :: items)
       else 
         Ok items
@@ -239,7 +244,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
       let* exprs = parse_multiple_exprs () in 
       let* closing = Stream.take () in
       let _ = Stream.advance () in
-      Ok (expr_node (Tuple exprs) (token_span opening closing))
+      Ok (expr_node (Tuple (expr :: List.rev exprs)) (token_span opening closing))
 
   let parse_pattern () = 
     let* next = Stream.take () in 
@@ -537,7 +542,7 @@ let parse_params patterns =
       start_pos = left.loc.start_pos;
       end_pos = field.pos + (String.length field.lexeme) - 1
     } in
-    Ok (expr_node (RecordAccess (left, field.lexeme)) loc)
+    Ok (expr_node (Record_access (left, field.lexeme)) loc)
     
   let _ = List.iter 
         (fun op -> Hashtbl.add prec_table op (Led bin_op)) 

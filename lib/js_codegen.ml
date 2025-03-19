@@ -43,13 +43,16 @@ let rec js_of_corgi_expr expr =
       let* exprs = js_of_expr_list elems in 
       Ok (Printf.sprintf "[%s]" exprs)
 
-    | List _elems -> Ok ""
+    | List list -> (* use a JS runtime linked list instead *)
+      let exprs = unroll_corgi_list [] list in 
+      let* exprs = js_of_expr_list exprs in 
+      Ok (Printf.sprintf "[%s]" exprs) 
 
-    | Record fields -> 
+    | Record fields ->  
       let* pairs = js_of_fields fields in
       Ok (Printf.sprintf "{%s}" pairs)
 
-    | RecordAccess (expr, name) -> 
+    | Record_access (expr, name) -> 
       let* expr = js_of_corgi_expr expr in 
       Ok (Printf.sprintf "%s[\"%s\"]" expr name) 
 

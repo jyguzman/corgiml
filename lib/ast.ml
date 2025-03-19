@@ -60,7 +60,7 @@ and expression_desc =
   | Tuple of expression list
   | Record of field list
 
-  | RecordAccess of expression * string
+  | Record_access of expression * string
 
 and corgi_list = Nil | Cons of expression * corgi_list
 
@@ -180,18 +180,18 @@ and stringify_expr expr = match expr.expr_desc with
   | Record fields -> 
     let fields_str = stringify_items fields stringify_record_field in
       Printf.sprintf "Record{%s}" fields_str
-  | RecordAccess (expr, name) -> 
+  | Record_access (expr, name) ->  
     let expr_str = stringify_expr expr in 
     Printf.sprintf "RecordAccess(%s.%s)" expr_str name
 
 and stringify_corgi_list lst = 
-  let rec unroll exprs = function
+  let exprs = List.rev (unroll_corgi_list [] lst) in 
+  Printf.sprintf "List[%s]" (stringify_expr_list exprs)
+
+and unroll_corgi_list exprs = function
     Nil -> exprs
   | Cons (expr, rest) -> 
-    unroll (expr :: exprs) rest
-  in 
-    let exprs = List.rev (unroll [] lst) in 
-    Printf.sprintf "List[%s]" (stringify_expr_list exprs)
+    unroll_corgi_list (expr :: exprs) rest
 
 and stringify_value_binding vb = 
   Printf.sprintf "Binding(%s = %s)" (stringify_pattern vb.pat) (stringify_expr vb.rhs)
