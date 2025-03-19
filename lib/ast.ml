@@ -49,7 +49,7 @@ and expression_desc =
   | Binary of expression * op * expression
   | Unary of op * expression 
 
-  | If of expression * expression * expression option
+  | If of expression * expression * expression
   | Let of bool * value_binding list * expression
   | Match of expression * case list
 
@@ -165,9 +165,8 @@ and stringify_expr expr = match expr.expr_desc with
     let rec_str = if is_rec then "rec " else "" in 
     let bindings_str = stringify_items value_bindings stringify_value_binding in
       Printf.sprintf "Let(%s %s %s)" rec_str bindings_str (stringify_expr rhs)
-  | If (condition, then_expr, else_expr) -> 
-      let else_str = match else_expr with None -> "" | Some e -> " else " ^ stringify_expr e in
-        Printf.sprintf "If(%s then %s%s)" (stringify_expr condition) (stringify_expr then_expr) else_str
+  | If (condition, then_, else_) -> 
+      Printf.sprintf "If(%s then %s else %s)" (stringify_expr condition) (stringify_expr then_) (stringify_expr else_)
   | Function (params, body, _) -> 
       Printf.sprintf "Fun(%s -> %s)" (stringify_params params) (stringify_expr body)
   | Match (expr, cases) -> 

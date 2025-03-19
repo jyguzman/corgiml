@@ -99,10 +99,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
     | If (cond, then_exp, else_expr) -> 
       let* cond_typ, cond_cons = check_expr env cond in 
       let* then_typ, then_cons = check_expr env then_exp in
-      let* else_typ, else_cons = match else_expr with 
-        None -> Ok (unit, [])
-      | Some expr -> check_expr env expr
-      in 
+      let* else_typ, else_cons = check_expr env else_expr in 
       let constraints = cond_cons @ then_cons @ else_cons in 
       let cond_con = IfConditionConstraint (expr, cond_typ) in 
       let if_con = IfBranchesConstraint (expr, then_typ, else_typ) in 

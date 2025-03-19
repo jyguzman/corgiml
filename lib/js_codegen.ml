@@ -34,10 +34,11 @@ let rec js_of_corgi_expr expr =
       let* operand = js_of_corgi_expr operand in 
       Ok (Printf.sprintf "%s%s" op operand)
 
-    | If (condition, then_, _else_) -> 
+    | If (condition, then_, else_) -> 
       let* condition = js_of_corgi_expr condition in 
       let* then_ = js_of_corgi_expr then_ in
-      Ok (Printf.sprintf "%s ? %s : " condition then_)
+      let* else_ = js_of_corgi_expr else_ in
+      Ok (Printf.sprintf "%s ? %s : %s" condition then_ else_)
 
     | Tuple elems -> 
       let* exprs = js_of_expr_list elems in 

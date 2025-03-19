@@ -74,14 +74,6 @@ module TokenStream : TOKEN_STREAM = struct
     [] -> Error (Unexpected_eof "unexpected end of file")  
   | x :: _ -> Ok x.pos
 
-  let expect (lexeme_or_name: string) = match !tokens with 
-    [] -> Error (Unexpected_token "unexpected end of file")
-  | x :: _ -> 
-    if x.lexeme = lexeme_or_name || x.name = lexeme_or_name then 
-      let _ = advance () in Ok x
-    else 
-      Error (Unexpected_token ("expected " ^ lexeme_or_name ^ " but got " ^ stringify_token x))
-
   let accept lexeme_or_name = match !tokens with 
     [] -> false
   | x :: _ -> 
@@ -89,6 +81,15 @@ module TokenStream : TOKEN_STREAM = struct
       let _ = advance () in true 
     else 
       false
+
+  let expect (lexeme_or_name: string) = match !tokens with 
+    [] -> Error (Unexpected_token "unexpected end of file")
+  | x :: _ -> 
+    if accept lexeme_or_name then 
+      Ok x
+    else
+      let tok_str = stringify_token x in 
+      Error (Unexpected_token (Printf.sprintf "Parse Error: Expected \"%s\" but received %s" lexeme_or_name tok_str))
 
   let accept_no_adv lexeme_or_name = match !tokens with 
     [] -> false
@@ -343,13 +344,11 @@ let parse_params patterns =
   let parse_if_expr () = 
     let if_tok = Stream.prev () in
     let* condition = expr () in 
-    let* _ = Stream.expect "then" in 
-    let* then_expr = expr () in 
-    let* else_expr = if Stream.accept "else" then 
-      let* expr = expr () in Ok (Some expr)
-    else 
-      Ok None in  
-    let* curr = Stream.take () in 
+    let* _ = Stream.expect "then" in
+    let* then_expr = expr () in
+    let* _ = Stream.expect "else" in 
+    let* else_expr = expr () in 
+    let* curr = Stream.take () in  
     let location = token_span if_tok curr in
       Ok (expr_node (If (condition, then_expr, else_expr)) location)
 
@@ -471,14 +470,13 @@ let parse_params patterns =
       | "[" -> 
         let _ = Stream.advance () in
         let* inner = ty () in 
-        let _ = Stream.expect "]" in 
+        let* _ = Stream.expect "]" in 
         Ok (App("List", [inner]))
 
       | "(" -> 
         let _ = Stream.advance () in
         let* typ = paren_type () in 
-        let _ = print_endline (string_of_type typ) in
-        let _ = Stream.expect ")" in 
+        let* _ = Stream.expect ")" in 
         Ok typ
 
       | _ -> 
