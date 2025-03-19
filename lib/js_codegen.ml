@@ -4,6 +4,17 @@ let (let*) r f = match r with
   Ok v -> f v 
 | Error e -> Error e
 
+let js_of_list gen_js_func items separator = 
+  let rec js_of_pat_list_aux acc items = 
+    if List.length items = 0 then 
+      Ok acc 
+    else
+      let* js_pair = gen_js_func (List.hd items) in 
+      js_of_pat_list_aux (js_pair :: acc) (List.tl items)
+  in
+    let* item_strs = js_of_pat_list_aux [] items in 
+    Ok (String.concat separator (List.rev item_strs))
+
 let js_of_pattern pat = 
   match pat.pattern_desc with 
       Empty_parens -> Ok "undefined" (* need to change this *)
@@ -13,6 +24,9 @@ let js_of_pattern pat =
     | True -> Ok "true"
     | False -> Ok "false"
     | _ -> Error ("not a Corgi pattern")
+
+let js_of_pat_list pats = 
+  js_of_list js_of_pattern pats ", "
 
 let rec js_of_corgi_expr expr = 
   match expr.expr_desc with 
@@ -50,8 +64,13 @@ let rec js_of_corgi_expr expr =
       let* else_ = js_of_corgi_expr else_ in
       Ok (Printf.sprintf "%s ? %s : %s" condition then_ else_)
 
-    | Let (_is_rec, _value_bindings, _body) -> 
-      Ok ""
+    | Let (_is_rec, value_bindings, body) -> 
+      let pats = List.map (fun vb -> vb.pat) value_bindings in
+      let* js_pats = js_of_pat_list pats in
+      let values = List.map (fun vb -> vb.rhs) value_bindings in 
+      let* js_values = js_of_expr_list values in 
+      let* body = js_of_corgi_expr body in 
+      Ok (Printf.sprintf "((%s) => %s)(%s)" js_pats body js_values)
 
     | Tuple elems -> 
       let* exprs = js_of_expr_list elems in 
@@ -77,26 +96,10 @@ and js_of_field field =
   Ok (Printf.sprintf "%s: %s" field.key value)
 
 and js_of_fields fields = 
-  let rec js_of_fields_aux acc fields = 
-    if List.length fields = 0 then 
-      Ok acc 
-    else
-      let* js_pair = js_of_field @@ List.hd fields in 
-      js_of_fields_aux (js_pair :: acc) (List.tl fields)
-  in
-    let* pairs = js_of_fields_aux [] fields in 
-    Ok (String.concat ", " (List.rev pairs))
+  js_of_list js_of_field fields ", "
 
 and js_of_expr_list exprs = 
-  let rec js_of_expr_list_aux acc exprs = 
-    if List.length exprs = 0 then 
-      Ok acc 
-    else
-      let* js_pair = js_of_corgi_expr @@ List.hd exprs in 
-      js_of_expr_list_aux (js_pair :: acc) (List.tl exprs)
-  in
-    let* pairs = js_of_expr_list_aux [] exprs in 
-    Ok (String.concat ", " (List.rev pairs))
+  js_of_list js_of_corgi_expr exprs ", "
 
 let js_of_value_binding vb = 
   let pat, expr = vb.pat, vb.rhs in 
@@ -105,15 +108,7 @@ let js_of_value_binding vb =
   Ok (Printf.sprintf "const %s = %s;" js_pat js_expr)
 
 let js_of_value_bindings value_bindings = 
-  let rec js_of_value_bindings_aux acc value_bindings = 
-    if List.length value_bindings = 0 then 
-      Ok acc 
-    else
-      let* js_assignment = js_of_value_binding @@ List.hd value_bindings in 
-      js_of_value_bindings_aux (js_assignment :: acc) (List.tl value_bindings)
-  in
-    let* assignments = js_of_value_bindings_aux [] value_bindings in 
-    Ok (String.concat "\n" assignments)
+  js_of_list js_of_value_binding value_bindings "\n"
 
 let js_of_corgi_mi mi =
   match mi.module_item_desc with 
@@ -122,15 +117,7 @@ let js_of_corgi_mi mi =
     | _ -> Error "module item type doesn't exist"
 
 let js_of_corgi_program prog = 
-  let rec js_corgi_program_aux acc items = 
-    if List.length items = 0 then 
-      Ok acc 
-    else
-      let* js_assignment = js_of_corgi_mi @@ List.hd items in 
-      js_corgi_program_aux (js_assignment :: acc) (List.tl items)
-  in
-    let* assignments = js_corgi_program_aux [] prog in 
-    Ok (String.concat "\n" (List.rev assignments))
+  js_of_list js_of_corgi_mi prog "\n"
 
 module Codegen = struct 
   let gen_js_expr corgi_expr = js_of_corgi_expr corgi_expr

@@ -8,4 +8,9 @@ let t = (1, 2, 3,)
 let add x y = x + y
 let a = add 2 3
 let b = (fn p q -> p * q) 10 29
-let double = fn x y -> fn z -> x + y + z
+let double = fn x y -> fn z -> fn x y z -> x * y * z
+
+let y = 
+    let x = 5 and y = 3 in 
+    let z = 10 in
+    x * y + z
