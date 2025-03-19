@@ -187,7 +187,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
     let rec parse_fn_app_aux args =
       let* curr = Stream.take () in
       if lbp curr <> 70 then Ok args else
-        let* arg = expr () in 
+        let* arg = parse_expr 71 in 
           parse_fn_app_aux (arg :: args)
     in 
     let* args = parse_fn_app_aux [] in 
@@ -237,6 +237,7 @@ module Parser (Stream : TOKEN_STREAM) = struct
   let parse_paren_expr () = 
     let opening = Stream.prev () in 
     let* expr = expr () in 
+    let _ = print_endline (stringify_expr expr) in 
     let* curr = Stream.take () in 
     if curr.token_type = R_paren then 
       let _ = Stream.advance () in
@@ -298,7 +299,7 @@ let parse_params patterns =
     let* idents = parse_params patterns in 
     let* _ = Stream.expect "->" in
     let* body = expr () in
-    let* curr = Stream.take () in 
+    let* curr = Stream.take () in
     let location = token_span fun_token curr in 
       Ok (expr_node (Function (List.rev idents, body, None)) location)
 
@@ -429,6 +430,7 @@ let parse_params patterns =
       Ok (expr_node (Match(match_expr, cases)) span)
 
   let rec arrow left = 
+    let _ = Stream.advance () in
     let* right = ty () in
       Ok (Arrow (left, right))
 
@@ -457,7 +459,6 @@ let parse_params patterns =
 
   and ty () = 
     let* curr = Stream.take () in   
-    let _ = Stream.advance () in    
     let* typ = match curr.lexeme with 
         "Int" -> Ok int 
       | "Float" -> Ok float
@@ -552,7 +553,7 @@ let parse_params patterns =
       [("(", Nud parse_paren_expr); ("begin", Nud parse_grouped); 
       ("[", Nud list); ("{", Nud record);
       ("if", Nud parse_if_expr); ("let", Nud parse_let_expr); ("match", Nud match_expr); 
-      ("fun", Nud parse_function);]
+      ("fn", Nud parse_function);]
 end
  
 module ParserImpl = Parser(TokenStream)

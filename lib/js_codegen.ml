@@ -34,11 +34,24 @@ let rec js_of_corgi_expr expr =
       let* operand = js_of_corgi_expr operand in 
       Ok (Printf.sprintf "%s%s" op operand)
 
+    | Function (params, body, _) -> 
+      let params = stringify_params params in
+      let* body = js_of_corgi_expr body in
+      Ok (Printf.sprintf "(%s) => %s" params body)
+
+    | Apply (fn, args) ->
+      let* fn = js_of_corgi_expr fn in 
+      let* args = js_of_expr_list args in 
+      Ok (Printf.sprintf "%s(%s)" fn args)
+
     | If (condition, then_, else_) -> 
       let* condition = js_of_corgi_expr condition in 
       let* then_ = js_of_corgi_expr then_ in
       let* else_ = js_of_corgi_expr else_ in
       Ok (Printf.sprintf "%s ? %s : %s" condition then_ else_)
+
+    | Let (_is_rec, _value_bindings, _body) -> 
+      Ok ""
 
     | Tuple elems -> 
       let* exprs = js_of_expr_list elems in 

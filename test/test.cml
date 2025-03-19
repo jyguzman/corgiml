@@ -5,3 +5,7 @@ let w = record.x
 let l = [1.0, 5.77, 9.89,]
 let i = if true then 5.0 else 10.0
 let t = (1, 2, 3,)
+let add x y = x + y
+let a = add 2 3
+let b = (fn p q -> p * q) 10 29
+let double = fn x y -> fn z -> x + y + z
