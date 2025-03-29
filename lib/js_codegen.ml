@@ -52,7 +52,7 @@ let rec js_of_corgi_expr expr =
       let params = stringify_params params in
       let* body = js_of_corgi_expr body in
       Ok (Printf.sprintf "(%s) => %s" params body)
-
+  
     | Apply (fn, args) ->
       let* fn = js_of_corgi_expr fn in 
       let* args = js_of_expr_list args in 
