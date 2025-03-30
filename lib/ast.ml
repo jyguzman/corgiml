@@ -60,7 +60,7 @@ and expression_desc =
   | Tuple of expression list
   | Record of field list
 
-  | Record_access of expression * string
+  | Field_access of expression * string
 
 and corgi_list = Nil | Cons of expression * corgi_list
 
@@ -179,7 +179,7 @@ and stringify_expr expr = match expr.expr_desc with
   | Record fields -> 
     let fields_str = stringify_items fields stringify_record_field in
       Printf.sprintf "Record{%s}" fields_str
-  | Record_access (expr, name) ->  
+  | Field_access (expr, name) ->  
     let expr_str = stringify_expr expr in 
     Printf.sprintf "RecordAccess(%s.%s)" expr_str name
 

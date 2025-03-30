@@ -85,7 +85,7 @@ let rec js_of_corgi_expr expr =
       let* pairs = js_of_fields fields in
       Ok (Printf.sprintf "{%s}" pairs)
 
-    | Record_access (expr, name) -> 
+    | Field_access (expr, name) -> 
       let* expr = js_of_corgi_expr expr in 
       Ok (Printf.sprintf "%s[\"%s\"]" expr name) 
 

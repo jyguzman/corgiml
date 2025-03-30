@@ -532,7 +532,7 @@ let parse_params patterns =
     let* right = parse_expr bp in  
     Ok (expr_node (Binary (left, (op.lexeme, loc op), right)) (expr_span left right))
 
-  let parse_record_access left = 
+  let parse_field_access left = 
     let _op = Stream.prev () in 
     let* field = Stream.expect "ident" in 
     let loc = {
@@ -541,13 +541,13 @@ let parse_params patterns =
       start_pos = left.loc.start_pos;
       end_pos = field.pos + (String.length field.lexeme) - 1
     } in
-    Ok (expr_node (Record_access (left, field.lexeme)) loc)
+    Ok (expr_node (Field_access (left, field.lexeme)) loc)
     
   let _ = List.iter 
         (fun op -> Hashtbl.add prec_table op (Led bin_op)) 
         ["+"; "*"; "-"; "/"; "+."; "-."; "*."; "/."; "<"; "<="; ">"; ">="; "="; "<>"]
 
-  let _ = Hashtbl.add prec_table "." (Led parse_record_access)
+  let _ = Hashtbl.add prec_table "." (Led parse_field_access)
   
   let _ = List.iter (fun (l, h) -> Hashtbl.add prec_table l h) 
       [("(", Nud parse_paren_expr); ("begin", Nud parse_grouped); 
