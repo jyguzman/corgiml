@@ -156,12 +156,24 @@ and stringify_module_item mi = match mi.module_item_desc with
     let bindings_str = stringify_items value_bindings stringify_value_binding in 
       Printf.sprintf "LetDecl(%s %s)" (if is_rec then "rec " else "") bindings_str
   | TypeDefinition td ->
-    let _name, _vars, kind = td.name, td.type_vars, td.type_kind in   
-    stringify_type_kind kind
+    let vars_string = stringify_items td.type_vars (fun s -> s) in   
+    let kind_string = stringify_type_kind td.type_kind in 
+    let type_string = match td.type_kind with 
+      Variant _ -> "Variant"
+    | Record _ -> "Record" 
+    in  
+    Printf.sprintf "%s(%s, [%s], [%s])" type_string td.name vars_string kind_string
+    
 
 and stringify_type_kind = function 
-    | Variant _cds -> ""
-    | Record _fds -> "" 
+    | Variant cds -> stringify_items cds stringify_constr_decl
+    | Record fds -> stringify_items fds stringify_field_decl 
+
+and stringify_constr_decl cd = 
+  Printf.sprintf "ConstrDecl(%s, [%s])" cd.name (stringify_items cd.types string_of_type)
+
+and stringify_field_decl fd = 
+  Printf.sprintf "%s: %s" fd.key (string_of_type fd.typ)
 
 and stringify_expr_list exprs = 
   stringify_items exprs stringify_expr

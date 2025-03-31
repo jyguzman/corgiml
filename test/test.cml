@@ -1,16 +1,8 @@
-let x = 5.9
-let z = y * ((5.3 - 9) + 9)
-let record = {x = 5, y = 10}
-let w = record.x
-let l = [1.0, 5.77, 9.89,]
-let i = if true then 5.0 else 10.0
-let t = (1, 2, 3,)
-let add x y = x + y
-let a = add 2 3
-let b = (fn p q -> p * q) 10 29
-let double = fn x y -> fn z -> fn x y z -> x * y * z
+type Thing a b = 
+    | VariantOne Int 
+    | VariantTwo String
 
-let y = 
-    let x = 5 and y = 3 in 
-    let z = 10 in
-    x * y + z
+type Record a = {
+    name: String,
+    age: Int
+}

@@ -446,7 +446,8 @@ let parse_params patterns =
         else 
           Ok types
     in 
-      parse_multiple_types_aux []
+      let* first = ty () in 
+      parse_multiple_types_aux [first]
 
   and paren_type () = 
     let* typ = ty () in 
@@ -459,22 +460,24 @@ let parse_params patterns =
 
   and ty () = 
     let* curr = Stream.take () in   
-    let* typ = match curr.lexeme with 
-        "Int" -> Ok int 
-      | "Float" -> Ok float
-      | "String" -> Ok string
-      | "Bool" -> Ok bool 
-      | "Unit" -> Ok unit 
-      | "Option" | "Result" -> 
+    let* typ = match curr.token_type with 
+        Int_annotation -> Ok int 
+      | Float_annotation -> Ok float
+      | String_annotation -> Ok string
+      | Bool_annotation -> Ok bool 
+      | Unit_annotation -> Ok unit 
+      | Option_annotation | Result_annotation -> 
         let* inner = ty () in Ok (App(curr.lexeme, [inner]))
 
-      | "[" -> 
+      | Ident i -> Ok (Var i)
+
+      | L_bracket -> 
         let _ = Stream.advance () in
         let* inner = ty () in 
         let* _ = Stream.expect "]" in 
         Ok (App("List", [inner]))
 
-      | "(" -> 
+      | L_paren -> 
         let _ = Stream.advance () in
         let* typ = paren_type () in 
         let* _ = Stream.expect ")" in 
@@ -485,6 +488,7 @@ let parse_params patterns =
     in if Stream.accept "->" then 
       arrow typ
     else
+      let _ = Stream.advance () in
       Ok typ
 
   let parse_let () = 
@@ -511,26 +515,27 @@ let parse_params patterns =
   let get_type_variables () = 
     let rec get_type_variables_aux vars = 
       if Stream.accept_no_adv "ident" then 
-        Ok vars 
-      else 
         let* var = ident () in 
         if String.length var.lexeme > 1 then 
           Error (Unexpected_token (Printf.sprintf "Type variables must be 1 character, but '%s' is %d characters." var.lexeme (String.length var.lexeme)))
         else
           get_type_variables_aux (var.lexeme :: vars)
+      else 
+        Ok vars
     in 
       let* vars = get_type_variables_aux [] in 
       Ok (List.rev vars)
 
   let parse_field_decl () = 
     let* key = Stream.expect "ident" in 
-    let* _ = Stream.expect "=" in 
+    let* _ = Stream.expect ":" in 
     let* ty = ty () in 
     Ok {key = key.lexeme; typ = ty}
 
   let parse_record_type () = 
     let rec parse_field_decls field_decls = 
       if Stream.accept "}" then 
+        let _ = print_endline "yes" in
         Ok field_decls
       else
         let* field_decl = parse_field_decl () in 
@@ -541,33 +546,33 @@ let parse_params patterns =
           Ok field_decls
     in
     let* _ = Stream.expect "{" in 
-    let* first = parse_field_decl () in
-    let* field_decls = parse_field_decls [first] in
+    let* field_decls = parse_field_decls [] in
     Ok (Record (List.rev field_decls))
 
   let parse_variant_type () = 
     let rec parse_constr_decls decls =
       if Stream.accept "|" then 
         let* name = Stream.expect "upper_ident" in 
-        let* types = parse_multiple_types () in 
-        parse_constr_decls ({name = name.lexeme; types = types} :: decls)
+        let* types = ty () in 
+        parse_constr_decls ({name = name.lexeme; types = [types]} :: decls)
       else
         Ok decls
     in
     let* first_name = Stream.expect "upper_ident" in 
-    let* types = parse_multiple_types () in 
-    let* rest = parse_constr_decls [{name = first_name.lexeme; types = types}] in
+    let* types = ty () in 
+    let* rest = parse_constr_decls [{name = first_name.lexeme; types = [types]}] in
     Ok (Variant (List.rev rest)) 
 
   let parse_type_definition () = 
-    let type_tok = Stream.prev () in 
+    let* type_tok = Stream.expect "type" in 
     let* type_name = Stream.expect "upper_ident" in 
     let* type_vars = get_type_variables () in 
     let* _ = Stream.expect "=" in 
     let* curr = Stream.take () in 
     let* type_kind = match curr.token_type with 
       L_brace -> parse_record_type ()
-    | Upper_ident _i -> parse_variant_type ()
+    | Vertical_bar -> let _ = Stream.advance () in parse_variant_type () 
+    | Upper_ident _ -> parse_variant_type ()
     | _ -> Error (Unexpected_token ("Expected an opening brace ({) for a record type or capitalized identifier for
                                      variant type, but got " ^ stringify_token curr))
     in 
