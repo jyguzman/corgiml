@@ -508,10 +508,80 @@ let parse_params patterns =
         Ok {module_item_desc = LetDeclaration (is_rec, value_bindings);
           module_item_loc = token_span let_tok last}
 
+  let get_type_variables () = 
+    let rec get_type_variables_aux vars = 
+      if Stream.accept_no_adv "ident" then 
+        Ok vars 
+      else 
+        let* var = ident () in 
+        if String.length var.lexeme > 1 then 
+          Error (Unexpected_token (Printf.sprintf "Type variables must be 1 character, but '%s' is %d characters." var.lexeme (String.length var.lexeme)))
+        else
+          get_type_variables_aux (var.lexeme :: vars)
+    in 
+      let* vars = get_type_variables_aux [] in 
+      Ok (List.rev vars)
+
+  let parse_field_decl () = 
+    let* key = Stream.expect "ident" in 
+    let* _ = Stream.expect "=" in 
+    let* ty = ty () in 
+    Ok {key = key.lexeme; typ = ty}
+
+  let parse_record_type () = 
+    let rec parse_field_decls field_decls = 
+      if Stream.accept "}" then 
+        Ok field_decls
+      else
+        let* field_decl = parse_field_decl () in 
+        let field_decls = field_decl :: field_decls in
+        if Stream.accept "," then
+          parse_field_decls field_decls
+        else 
+          Ok field_decls
+    in
+    let* _ = Stream.expect "{" in 
+    let* first = parse_field_decl () in
+    let* field_decls = parse_field_decls [first] in
+    Ok (Record (List.rev field_decls))
+
+  let parse_variant_type () = 
+    let rec parse_constr_decls decls =
+      if Stream.accept "|" then 
+        let* name = Stream.expect "upper_ident" in 
+        let* types = parse_multiple_types () in 
+        parse_constr_decls ({name = name.lexeme; types = types} :: decls)
+      else
+        Ok decls
+    in
+    let* first_name = Stream.expect "upper_ident" in 
+    let* types = parse_multiple_types () in 
+    let* rest = parse_constr_decls [{name = first_name.lexeme; types = types}] in
+    Ok (Variant (List.rev rest)) 
+
+  let parse_type_definition () = 
+    let type_tok = Stream.prev () in 
+    let* type_name = Stream.expect "upper_ident" in 
+    let* type_vars = get_type_variables () in 
+    let* _ = Stream.expect "=" in 
+    let* curr = Stream.take () in 
+    let* type_kind = match curr.token_type with 
+      L_brace -> parse_record_type ()
+    | Upper_ident _i -> parse_variant_type ()
+    | _ -> Error (Unexpected_token ("Expected an opening brace ({) for a record type or capitalized identifier for
+                                     variant type, but got " ^ stringify_token curr))
+    in 
+    let prev = Stream.prev () in  
+    let end_pos = prev.pos + (String.length prev.lexeme - 1) in 
+    Ok {module_item_desc = TypeDefinition {name = type_name.lexeme; type_vars = type_vars; type_kind = type_kind}; 
+        module_item_loc = {line = type_tok.line; col = type_tok.col; start_pos = type_tok.pos; end_pos = end_pos}} 
+  
+
   let parse_module_item () =
     let* next = Stream.take () in 
     match next.token_type with 
-    | Let -> parse_let ()
+      Let -> parse_let ()
+    | Type -> parse_type_definition () 
     | _ -> 
       let* expr = expr () in
         Ok {module_item_desc = Expr expr; module_item_loc = expr.loc}

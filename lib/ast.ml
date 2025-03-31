@@ -89,11 +89,20 @@ type module_item = {
 and module_item_desc =
   | Expr of expression
   | LetDeclaration of bool * value_binding list
-  | TypeDefintion of string * string list * type_kind
+  | TypeDefinition of {
+    name: string;
+    type_vars: string list;
+    type_kind: type_kind
+  }
 
 and type_kind = 
   | Variant of constr_decl list 
-  | Record of (string * ty) list 
+  | Record of field_decl list 
+
+and field_decl = {
+  key: string;
+  typ: ty
+}
 
 and constr_decl = {
   name: string;
@@ -108,9 +117,9 @@ let unit = App("Unit", [])
 
 let ty_app constr args = App(constr, args)
 
-let ty_list inner = App("List", [inner])
-let ty_option inner = App("Option", [inner])
-let ty_result inner = App("Result", [inner])
+let list inner = App("List", [inner])
+let option inner = App("Option", [inner])
+let result inner = App("Result", [inner])
 
 let stringify_items ?(newline = false) items stringify_item  = 
   let stringifier = (fun (curr_list_str, num_items_left) item ->
@@ -146,7 +155,13 @@ and stringify_module_item mi = match mi.module_item_desc with
   | LetDeclaration (is_rec, value_bindings) ->
     let bindings_str = stringify_items value_bindings stringify_value_binding in 
       Printf.sprintf "LetDecl(%s %s)" (if is_rec then "rec " else "") bindings_str
-  | TypeDefintion _ -> "need to stringify type"
+  | TypeDefinition td ->
+    let _name, _vars, kind = td.name, td.type_vars, td.type_kind in   
+    stringify_type_kind kind
+
+and stringify_type_kind = function 
+    | Variant _cds -> ""
+    | Record _fds -> "" 
 
 and stringify_expr_list exprs = 
   stringify_items exprs stringify_expr
