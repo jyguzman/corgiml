@@ -59,6 +59,7 @@ and expression_desc =
   | List of corgi_list
   | Tuple of expression list
   | Record of field list
+  | Constructor of string * expression list
 
   | Field_access of expression * string
 
@@ -206,6 +207,8 @@ and stringify_expr expr = match expr.expr_desc with
   | Record fields -> 
     let fields_str = stringify_items fields stringify_record_field in
       Printf.sprintf "Record{%s}" fields_str
+  | Constructor (name, args) -> 
+    Printf.sprintf "Constructor(%s, [%s])" name (stringify_expr_list args)
   | Field_access (expr, name) ->  
     let expr_str = stringify_expr expr in 
     Printf.sprintf "RecordAccess(%s.%s)" expr_str name

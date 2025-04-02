@@ -80,10 +80,10 @@ module TypeChecker (F: Error.FORMATTER) = struct
         Arrow() *)
         
     | If (cond, then_exp, else_expr) -> 
-      let* cond_typ, cond_cons = check_expr env cond in 
-      let* then_typ, then_cons = check_expr env then_exp in
-      let* else_typ, else_cons = check_expr env else_expr in 
-      let constraints = cond_cons @ then_cons @ else_cons in 
+      let* cond_typ, cond_constraints = check_expr env cond in 
+      let* then_typ, then_constraints = check_expr env then_exp in
+      let* else_typ, else_constraints = check_expr env else_expr in 
+      let constraints = cond_constraints @ then_constraints @ else_constraints in 
       let cond_con = IfConditionConstraint (expr, cond_typ) in 
       let if_con = IfBranchesConstraint (expr, then_typ, else_typ) in 
         Ok (then_typ, constraints @ (if_con :: [cond_con]))  
