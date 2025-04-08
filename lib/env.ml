@@ -34,9 +34,3 @@ module Type_env = struct
         Some ty -> Some ty 
       | None -> lookup name rest
 end 
-
-(* let int_bin_op_type = App(Arrow, [int; App(Arrow, [int; int])])
-let float_bin_op_type = App(Arrow, [float; App(Arrow, [float; float])])
-
-let (init_type_env: env) = List.fold_left (fun env op -> (op, VarBind int_bin_op_type) :: env) [] ["+"; "-"; "*"; "/"] 
-let _ = List.fold_left (fun env op -> (op, VarBind float_bin_op_type) :: env) [] ["+."; "-."; "*."; "/."]  *)

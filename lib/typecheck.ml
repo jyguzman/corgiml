@@ -34,31 +34,31 @@ let type_of_pattern env pattern =
 
 module TypeChecker (F: Error.FORMATTER) = struct 
 
-  let rec check_bindings env value_bindings = 
-    let rec check_bindings_aux checked_bindings constraints rest = 
+  let rec gen_constraints_from_value_bindings env value_bindings = 
+    let rec aux checked_bindings constraints rest = 
       if List.length rest = 0 then 
         Ok (checked_bindings, constraints)
       else
         let vb = List.hd rest in 
-        let* typ, cons = check_expr env vb.rhs in 
+        let* typ, cons = gen_constraints env vb.rhs in 
         let constraints = constraints @ cons in
         match vb.pat.pattern_desc with 
           | Const_ident i -> 
-            check_bindings_aux ((i, typ) :: checked_bindings) constraints (List.tl rest)
+            aux ((i, typ) :: checked_bindings) constraints (List.tl rest)
           | Any -> 
-            check_bindings_aux checked_bindings constraints (List.tl rest)
+            aux checked_bindings constraints (List.tl rest)
           | Empty_parens -> 
             if typ = unit then 
-              check_bindings_aux checked_bindings constraints (List.tl rest)
+              aux checked_bindings constraints (List.tl rest)
             else 
               Error (Type_mismatch "needs to be unit")
           | _ -> 
             Error (Type_mismatch "unrecognized pattern")
     in 
-    let* bindings, constraints = check_bindings_aux [] [] value_bindings in 
+    let* bindings, constraints = aux [] [] value_bindings in 
     Ok (Type_env.add env bindings, constraints)
 
-  and check_expr env expr = 
+  and gen_constraints env expr = 
     let expr_str = F.display_expr expr in
     match expr.Ast.expr_desc with 
     | Integer _ -> Ok (int, [])
@@ -71,7 +71,7 @@ module TypeChecker (F: Error.FORMATTER) = struct
         | None -> 
           Error (Unrecognized_operation (Printf.sprintf "%s\n Could not find a previous declaration for the variable '%s'" expr_str name)))
 
-    | Grouping g -> check_expr env g 
+    | Grouping g -> gen_constraints env g 
 
     (* | Function (params, body, _) -> 
       let vars = List.map (fun p -> (p, Var.fresh ())) params in 
@@ -80,9 +80,9 @@ module TypeChecker (F: Error.FORMATTER) = struct
         Arrow() *)
         
     | If (cond, then_exp, else_expr) -> 
-      let* cond_typ, cond_constraints = check_expr env cond in 
-      let* then_typ, then_constraints = check_expr env then_exp in
-      let* else_typ, else_constraints = check_expr env else_expr in 
+      let* cond_typ, cond_constraints = gen_constraints env cond in 
+      let* then_typ, then_constraints = gen_constraints env then_exp in
+      let* else_typ, else_constraints = gen_constraints env else_expr in 
       let constraints = cond_constraints @ then_constraints @ else_constraints in 
       let cond_con = IfConditionConstraint (expr, cond_typ) in 
       let if_con = IfBranchesConstraint (expr, then_typ, else_typ) in 
@@ -93,8 +93,8 @@ module TypeChecker (F: Error.FORMATTER) = struct
       let* exp_typ, exp_cons = check_expr env expr in  *)
 
     | Binary (l, (op, _op_loc), r) -> 
-      let* l_typ, l_cons = check_expr env l in 
-      let* r_typ, r_cons = check_expr env r in 
+      let* l_typ, l_cons = gen_constraints env l in 
+      let* r_typ, r_cons = gen_constraints env r in 
       let* expected_typ = begin match op with 
         "+" | "-" | "*" | "/" -> 
           Ok int
@@ -112,8 +112,8 @@ module TypeChecker (F: Error.FORMATTER) = struct
       Ok (expected_typ, BinaryOpConstraint (expr, l_typ, r_typ, expected_typ) :: (l_cons @ r_cons))
 
     | Ast.Let (_, value_bindings, body) -> 
-      let* let_env, constraints = check_bindings env value_bindings in
-      let* body_typ, body_cons = check_expr let_env body in 
+      let* let_env, constraints = gen_constraints_from_value_bindings env value_bindings in
+      let* body_typ, body_cons = gen_constraints let_env body in 
       Ok (body_typ, constraints @ body_cons) 
     | _ -> 
       Error (Unrecognized_operation ("Operation " ^ (Ast.stringify_expr expr) ^ " not supported"))    
